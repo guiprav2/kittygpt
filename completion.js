@@ -85,8 +85,11 @@ async function completion(logs, opt = {}) {
       throw new Error(`API error (${res.status}): ${errorText.slice(0, 200)}`);
     }
     let data = !opt.stream && await res.json();
-    if (opt.call && data.choices[0].message.function_call) {
-      return { role: 'function_call', details: data.choices[0].message.function_call };
+    if (payload.function_call && data.choices[0].message.function_call) {
+      let call = data.choices[0].message.function_call;
+      let fn = opt.fns.find(x => x.name === call.name);
+      let ret = await fn.handler?.(JSON.parse(call.arguments));
+      return { role: 'function_call', details: call, ret };
     }
     if (opt.stream) {
       let finalMessage = await bodystream(res.body, opt.stream);

@@ -29,13 +29,20 @@ Published under GPL because software should be free.
 <body>
   <script type="module">
     import completion from 'https://esm.sh/@camilaprav/kittygpt';
+    let key = 'sk-🤫🤫🤫';
 
+    // Streaming responses
     let p = document.createElement('p');
     document.body.append(p);
-
     await completion([{ role: 'user', content: 'Tell me a joke about cats.' }], {
-      key: 'sk-🤫🤫🤫',
+      key,
       stream: x => p.textContent += x,
+    });
+
+    // Function calling
+    await completion([{ role: 'user', content: 'Make the cat meow.' }], {
+      key,
+      fns: [{ name: 'meow', handler: () => alert('Meow!') }],
     });
   </script>
 </body>
