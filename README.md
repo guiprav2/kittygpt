@@ -190,16 +190,14 @@ completion.defaultModel = 'mistral-7b';
 
 This makes `kittygpt` flexible across providers while keeping the interface stable.
 
----
-
 If you want to change these settings per-call instead of globally, just use the `model` and `endpoint` options when calling `completion()`.
 
 ---
 
-## 📦 CDN Usage (browser-friendly)
+## ⛓️ CDN Usage (browser-friendly)
 
 ```bash
-import { completion } from 'https://esm.sh/@camilaprav/kittygpt';
+import completion from 'https://esm.sh/@camilaprav/kittygpt';
 ```
 
 ---
@@ -233,4 +231,4 @@ along with this program. If not, see https://www.gnu.org/licenses/.
 > It works the way you *wish* OpenAI’s SDK did.
 > And it doesn’t meow around.
 
-— Camila (and maybe you <3)
+— Camila (and maybe you 💜)
