@@ -1,0 +1,9 @@
+{
+  "name": "@camilaprav/kittygpt",
+  "version": "0.0.0",
+  "description": "A friendly, minimalist, fully-featured ChatGPT completion library",
+  "main": "completion.js",
+  "type": "module",
+  "author": "Camila Prá",
+  "license": "GPL-v3.0+"
+}
