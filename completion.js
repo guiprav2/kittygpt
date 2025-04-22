@@ -73,7 +73,7 @@ async function completion(logs, opt = {}) {
   else if (opt.logger) logCompletion = opt.logger;
   let tries = 0;
   while (true) {
-    let res = await fetch(opt.apiUrl || completion.defaultApiUrl, {
+    let res = await fetch(opt.endpoint || completion.defaultEndpoint, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${opt.key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -106,7 +106,7 @@ async function completion(logs, opt = {}) {
   }
 }
 
-completion.defaultApiUrl = 'https://api.openai.com/v1/chat/completions';
+completion.defaultEndpoint = 'https://api.openai.com/v1/chat/completions';
 completion.defaultModel = 'gpt-4o';
 
 completion.defaultLogger = logs => {

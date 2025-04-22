@@ -6,7 +6,7 @@ A friendly, minimalist, fully-featured ChatGPT completion library.
 - Streaming, function calling, retries, system message handling.
 - No classes. No setup. Just clean calls and smooth purrs.
 
-Built because the official SDK fell short.  
+Built because the official SDK fell short.
 Published under GPL because software should be free.
 
 ---
@@ -43,21 +43,21 @@ Published under GPL because software should be free.
 
 ---
 
-## 💠 API: `completion(logs, opt = {})`
+## 💠 Main API: `completion(logs, opt = {})`
 
 ```js
 completion(logs, {
-  api,            // 🌍 Custom endpoint (default: OpenAI)
+  endpoint,       // 🌍 Custom API endpoint (default: OpenAI)
   key,            // 🔐 API key (required for OpenAI at least)
   model,          // 🧠 Model name (default: gpt-4o)
-  sysmsg,         // 📜 System message to prepend to `logs` copy sent to the API (string | array | function returning either)
+  sysmsg,         // 📜 System message to prepend to logs copy sent to the API (string | array | function returning either)
   rolemap,        // 📃 Maps custom roles to "system", "user", "assistant"; non-standard, unmapped roles cause log items to be automatically dropped
   stream,         // 💧 Callback for streamed content (chunk => ...)
   format,         // 📦 { type: 'json_schema', schema: { ... } }
   fns,            // 🧰 Function definitions
-  call,           // 🔧 "auto", "force", or function name
+  call,           // 🔧 "auto", "force", or function name (makes sure it is the one to get called)
   maxRetries      // 🔁 Max forced function call retries (default: 3)
-  logger,         // 🩵 true (default logger) or custom function (takes `logs` array as single argument)
+  logger,         // 🩵 true (default logger) or custom function (takes logs array as single argument)
 });
 ```
 
@@ -71,15 +71,18 @@ Called automatically but also exported in case it's useful elsewhere.
 
 ### Why?
 
-Because GPT **only accepts strict message formats**. Raw logs often include extra roles, metadata, or structure that will confuse or be silently dropped by the model. `purrify()` solves that.
+Because GPT **only accepts strict message formats**. Raw logs often include extra roles, metadata, or structure that will choke the API call. `purrify()` solves that.
 
 ### What it does:
 
-1. **🚫 Removes messages with roles not supported by GPT**  
+1. **🚫 Removes messages with roles not supported by GPT**
+
    GPT only supports `"system"`, `"user"`, and `"assistant"`. Messages with other roles are dropped unless a rolemap entry is provided.
 
-2. **📃 Supports `rolemap` to explicitly remap unknown roles**  
+2. **📃 Supports `rolemap` to explicitly remap unknown roles**
+
    For example:
+
    ```js
    rolemap: {
      warning: 'assistant',
@@ -88,13 +91,16 @@ Because GPT **only accepts strict message formats**. Raw logs often include extr
    ```
    This gives you fine-grained control over custom log roles without guessing or assuming.
 
-3. **💻 Merges consecutive messages from the same role**  
+3. **💻 Merges consecutive messages from the same role**
+
    Some models ignore all but the first or last same-role message. Merging prevents silent loss.
 
-4. **🧹 Strips all keys except `role` and `content`**  
+4. **🧹 Strips all keys except `role` and `content`**
+
    Keeps logs rich in-app, but sends only what GPT needs and accepts.
 
-5. **🪄 Normalizes content arrays**  
+5. **🪄 Normalizes content arrays**
+
    Converts `["Line 1", false, "Line 2", null]` into `"Line 1\nLine 2"`
 
 ### Example:
@@ -103,6 +109,7 @@ Because GPT **only accepts strict message formats**. Raw logs often include extr
 purrify([
   { role: 'annotation', content: 'User clicked here.' },
   { role: 'user', content: 'What does this do?' },
+  false && { role: 'user', content: 'Never makes it into the logs, without breaking anything.' },
   { role: 'assistant', content: 'It activates the laser.' },
   { role: 'debug', content: 'firing laser()' }
 ], {
@@ -126,7 +133,9 @@ Yields:
 
 ## 💧 `bodystream(body, callback)`
 
-Handles streaming response bodies from the OpenAI API.
+Handles streaming response bodies from the API.
+
+Used internally when `opt.stream` is provided but also exported in case it's useful elsewhere.
 
 - Uses `ReadableStream.getReader()`
 - Decodes chunks with `TextDecoder`
@@ -137,7 +146,7 @@ Handles streaming response bodies from the OpenAI API.
 
 ---
 
-## 📓 Logging
+## 📓 Logging and Defaults
 
 You can pass `logger: true` to use the built-in logger:
 
@@ -145,8 +154,38 @@ You can pass `logger: true` to use the built-in logger:
 completion.defaultLogger(logs);
 ```
 
-Or supply your own function to hook into completions.  
+Or supply your own function to hook into completions.
 The default logger uses `console.groupCollapsed()` and includes a preview of the assistant’s reply.
+
+You can also override the default logger globally:
+
+```js
+completion.defaultLogger = myCustomLogger;
+```
+
+---
+
+## 🌐 Endpoint and Model Defaults
+
+The default API endpoint and model used by `completion()` are:
+
+```js
+completion.defaultEndpoint = 'https://api.openai.com/v1/chat/completions';
+completion.defaultModel = 'gpt-4o';
+```
+
+You can override these at runtime if you're using a self-hosted model, proxy, or just want different defaults for your environment:
+
+```js
+completion.defaultEndpoint = 'http://localhost:11434/v1/chat/completions';
+completion.defaultModel = 'mistral-7b';
+```
+
+This makes `kittygpt` flexible across providers while keeping the interface stable.
+
+---
+
+If you want to change these settings per-call instead of globally, just use the `model` and `endpoint` options when calling `completion()`.
 
 ---
 
@@ -168,7 +207,7 @@ npm install @camilaprav/kittygpt
 
 ## 🧵 License
 
-**GPL-v3.0 or later**  
+**GPL-v3.0 or later**
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
