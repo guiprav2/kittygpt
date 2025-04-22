@@ -73,11 +73,9 @@ async function completion(logs, opt = {}) {
   else if (opt.logger) logCompletion = opt.logger;
   let tries = 0;
   while (true) {
-    let res = await fetch(opt.endpoint || completion.defaultEndpoint, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${opt.key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let headers = { 'Content-Type': 'application/json' };
+    if (opt.key) headers['Authorization'] = `Bearer ${opt.key}`;
+    let res = await fetch(opt.endpoint || completion.defaultEndpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
     if (!res.ok) {
       let errorText;
       try { errorText = await res.text() }
