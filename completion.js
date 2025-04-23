@@ -55,8 +55,8 @@ async function completion(logs, opt = {}) {
     ...logs
   ], opt.rolemap || {});
   let payload = { model: opt.model || completion.defaultModel, messages: msgs };
-  if (opt.fns?.length) {
-    payload.functions = opt.fns;
+  if (Object.keys(opt.fns || {}).length) {
+    payload.functions = Object.entries(opt.fns).map(([k, v]) => ({ ...v, name: k }));
     if (opt.call === 'force') {
       payload.function_call = 'auto';
     } else {
@@ -82,10 +82,10 @@ async function completion(logs, opt = {}) {
       catch (e) { errorText = '[failed to read response body]' }
       throw new Error(`API error (${res.status}): ${errorText.slice(0, 200)}`);
     }
-    let data = !opt.stream && await res.json();
-    if (payload.function_call && data.choices[0].message.function_call) {
+    let data = !res.headers.get('content-type')?.includes?.('text/event-stream') && await res.json();
+    if (data && data.choices[0].message.function_call) {
       let call = data.choices[0].message.function_call;
-      let fn = opt.fns.find(x => x.name === call.name);
+      let fn = opt.fns[call.name];
       let ret = await fn.handler?.(JSON.parse(call.arguments));
       return { role: 'function_call', details: call, ret };
     }
@@ -107,7 +107,7 @@ async function completion(logs, opt = {}) {
   }
 }
 
-completion.defaultEndpoint = 'https://api.openai.com/v1/chat/completions';
+completion.defaultEndpoint = '/completion';
 completion.defaultModel = 'gpt-4o';
 
 completion.defaultLogger = logs => {

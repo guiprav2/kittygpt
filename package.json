@@ -1,9 +1,23 @@
 {
   "name": "@camilaprav/kittygpt",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A friendly, minimalist, fully-featured ChatGPT completion library",
   "main": "completion.js",
   "type": "module",
   "author": "Camila Prá",
-  "license": "GPL-v3.0+"
+  "license": "GPL-v3.0+",
+  "scripts": {
+    "miniproxy": "node miniproxy.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "mic": "^2.1.2",
+    "speaker": "^0.5.5",
+    "wrtc": "^0.4.7"
+  },
+  "devDependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0"
+  }
 }

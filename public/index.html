@@ -1,0 +1,68 @@
+<body style="display: flex; height: 100vh; flex-direction: column; justify-content: center; align-items: center">
+  <button id="VoiceChatBtn">Voice Chat</button>
+  <script type="module">
+    import voicechat from './voicechat.js';
+    import completion from './completion.js';
+    let { body } = document;
+
+    let p = document.createElement('p');
+    body.append(p);
+    await completion([{ role: 'user', content: 'Tell me a joke about cats.' }], {
+      logger: true,
+      stream: x => p.textContent += x,
+    });
+
+    await completion([{ role: 'user', content: 'Call function meow.' }], {
+      logger: true,
+      fns: { meow: { handler: () => alert('Meow!') } },
+    });
+
+    async function barrelRoll({ duration }) {
+      if (barrelRoll.running) return;
+      barrelRoll.running = 1;
+      Object.assign(body.style, { transition: `transform ${duration}ms linear`, transform: `rotate(${barrelRoll.angle += 360}deg)` });
+      await new Promise(r => setTimeout(r, duration));
+      barrelRoll.running = 0;
+    }
+    barrelRoll.angle = 0;
+
+    let btn = document.querySelector('#VoiceChatBtn');
+    btn.addEventListener('click', async () => {
+      try {
+        btn.disabled = true;
+        let session = await voicechat({
+          fns: {
+            setBgColor: {
+              parameters: {
+                type: 'object',
+                properties: { color: { type: 'string', description: 'Any CSS hex color value.' } },
+                required: ['color'],
+              },
+              handler: ({ color }) => { body.style.backgroundColor = color; console.log('bgcolor:', color) },
+            },
+            setTextColor: {
+              parameters: {
+                type: 'object',
+                properties: { color: { type: 'string', description: 'Any CSS hex color value.' } },
+                required: ['color'],
+              },
+              handler: ({ color }) => { body.style.color = color; console.log('color:', color) },
+            },
+            barrelRoll: {
+              parameters: {
+                type: 'object',
+                properties: { duration: { type: 'string', description: 'How long the roll takes in ms.' } },
+                required: ['duration'],
+              },
+              handler: barrelRoll,
+            },
+          },
+        });
+        session.sysupdate('voice', 'You are the ChatGPT voice assistant.');
+      } catch (err) {
+        console.error(err);
+        btn.disabled = false;
+      }
+    }, { once: true });
+  </script>
+</body>
