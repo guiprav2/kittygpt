@@ -1,11 +1,18 @@
 import { Writable } from 'stream';
 
+let corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+};
+
 function lambdaroll(middleware, cors = false) {
   return async function handler(req) {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     const url = new URL(req.url);
     const method = req.method;
+    if (cors && method === 'OPTIONS') return new Response('', { headers: corsHeaders });
     const headers = Object.fromEntries(req.headers.entries());
     const rawBody = method === 'POST' ? await req.arrayBuffer() : null;
 
@@ -23,13 +30,7 @@ function lambdaroll(middleware, cors = false) {
     let chunks = [];
     let endPromise = Promise.withResolvers();
 
-    if (cors) {
-      Object.assign(headersToSend, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      });
-    }
+    if (cors) Object.assign(headersToSend, corsHeaders);
 
     class MockRes extends Writable {
       _write(chunk, _encoding, callback) {
