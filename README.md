@@ -204,6 +204,7 @@ If you want to change these settings per-call instead of globally, just use the 
 
 ```bash
 import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
+// use it
 ```
 
 ---
@@ -212,6 +213,11 @@ import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
 
 ```bash
 npm install @camilaprav/kittygpt
+```
+
+```js
+import completion from '@camilaprav/kittygpt/completion.js';
+// use it
 ```
 
 ---
