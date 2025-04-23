@@ -205,20 +205,20 @@ If you want to change these settings per-call instead of globally, just use the 
 
 This function connects to the OpenAI real-time API to enable **bi-directional voice chat**. Works in both **browsers** and **NodeJS**, and supports **function calling** during a conversation.
 
-> Requires a local proxy server to work.
+> ⚠️ This API **requires a local server** to securely request a real-time voice token.
 >
-> Use [`kittygpt-serve`](https://www.npmjs.com/package/@camilaprav/kittygpt-serve) or [roll your own Express server](#-local-proxy--hosting-guide) using the provided middlewares.
+> Use [`kittygpt-serve`](https://www.npmjs.com/package/@camilaprav/kittygpt-serve) for a zero-config setup,
+> or [roll your own Express server](#-local-proxy--hosting-guide) using the exported `middleware/voicechat.js`.
 
 ---
 
-## ✨ Browser Example (with voice functions)
+## 🚀 Browser Example (with function call)
 
 ```html
 <body>
   <button id="VoiceChatBtn">Start Voice Chat</button>
   <script type="module">
     import voicechat from 'https://esm.sh/@camilaprav/kittygpt/voicechat.js';
-
     document.querySelector('#VoiceChatBtn').addEventListener('click', async ev => {
       ev.target.disabled = true;
       let session = await voicechat({
@@ -226,12 +226,10 @@ This function connects to the OpenAI real-time API to enable **bi-directional vo
           setBgColor: {
             parameters: {
               type: 'object',
-              properties: {
-                color: { type: 'string', description: 'Background color value in hex' }
-              },
+              properties: { color: { type: 'string', description: 'Hex color' } },
               required: ['color']
             },
-            handler: ({ color }) => { document.body.style.backgroundColor = color; }
+            handler: ({ color }) => document.body.style.backgroundColor = color
           }
         }
       });
@@ -240,6 +238,14 @@ This function connects to the OpenAI real-time API to enable **bi-directional vo
   </script>
 </body>
 ```
+
+Make sure you're running a server like `kittygpt-serve` in the same directory:
+
+```bash
+npx @camilaprav/kittygpt-serve
+```
+
+This will expose the `/voicechat` endpoint used by default.
 
 ---
 
@@ -266,21 +272,29 @@ let session = await voicechat({
   debug: true
 });
 
-session.sysupdate({ main: "You're ChatGPT, a helpful voice chat assistant." });
+session.sysupdate({ main: "You're ChatGPT, a helpful voice assistant." });
 ```
+
+Make sure you are also running a server locally:
+
+```bash
+npx @camilaprav/kittygpt-serve
+```
+
+This exposes `http://localhost:3000/voicechat`, the endpoint provided above.
 
 ---
 
-## 📦 Options
+## 🧰 Options
 
 ```ts
 voicechat({
-  endpoint,     // 🛠️ Server endpoint for session token (defaults to /voicechat)
-  model,        // 🧠 Model to use (default: gpt-4o-realtime-preview)
-  voice,        // 🎤 Voice to use (default: alloy)
-  transcript,   // 📋 Callback for partial transcripts (delta => ...)
-  fns,          // 🧰 Function calling map: name -> { parameters, handler }
-  debug         // 🐞 Logs internal activity (peer events, streams, etc)
+  endpoint,     // 🌍 API endpoint (default: "/voicechat")
+  model,        // 🧠 Model to use (default: "gpt-4o-realtime-preview")
+  voice,        // 🎤 Voice (default: "alloy")
+  transcript,   // ✍️ Callback: delta => ...
+  fns,          // 🧰 Function name -> { parameters, handler }
+  debug         // 🐞 Log internals (default: false)
 })
 ```
 
@@ -288,35 +302,60 @@ Returns a session object with:
 
 ```js
 {
-  sysupdate(),   // 🪄 Update system instructions or function list
-  setfns()       // 🔁 Replace all functions at runtime
-  stop(),        // ⛔️ Gracefully stops the session and frees all resources
+  sysupdate(),  // 🪄 Update system instructions or tools
+  setfns(),     // 🔁 Replace all function handlers
+  stop()        // ⛔ Gracefully terminate the session
 }
 ```
 
 ---
 
-## 📌 Requirements
+## 📦 Default Configs
 
-The `voicechat()` API **requires** a server to:
+```js
+voicechat.defaultEndpoint = '/voicechat';
+voicechat.defaultModel = 'gpt-4o-realtime-preview';
+voicechat.defaultVoice = 'alloy';
+```
 
-- Request a real-time session token from OpenAI
-- Return that token to the client
+---
+
+## ⚙️ Server Required
+
+The `voicechat()` API needs to:
+
+1. Request a session token from OpenAI's `/realtime/sessions`
+2. Return the token to the client
+
+This must be done **server-side**, or it will fail due to key exposure or CORS.
 
 You can:
 
-- Use `npx @camilaprav/kittygpt-serve` for a zero-config local server.
-- Or plug the provided middleware into your own Express app.
-- See [Local Proxy & Hosting Guide](#-local-proxy--hosting-guide) for instructions on both options.
+- Use `npx @camilaprav/kittygpt-serve` (zero config)
+- Or wire your own server with the exported middleware
+
+```js
+// In your Express app
+import midvoicechat from '@camilaprav/kittygpt/middleware/voicechat.js';
+app.get('/voicechat', midvoicechat);
+```
+
+Be sure to set this in your `.env`:
+
+```
+OPENAI_API_VOICECHAT_ENDPOINT=https://api.openai.com/v1/realtime/sessions
+OPENAI_API_KEY=sk-🤫🤫🤫
+```
 
 ---
 
 ## 🧠 Notes
 
-- In NodeJS, the mic and speaker are automatically handled for you.
-- In the browser, the user must give permission to access the mic.
-- Function calling works exactly like it does in `completion()`, but uses voice as input instead.
-- This API is experimental and may change. Feedback welcome!
+- In **Node**, the mic and speaker are auto-handled.
+- In **browser**, the user is prompted for mic access.
+- Function calling works like `completion()` but via spoken input.
+- Session closes cleanly with `stop()`.
+- Works great for demos, accessibility, assistants, toys, etc.
 
 ---
 
