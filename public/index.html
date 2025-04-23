@@ -5,6 +5,9 @@
     import completion from './completion.js';
     let { body } = document;
 
+    completion.defaultEndpoint = '/.netlify/functions/completion';
+    voicechat.defaultEndpoint = '/.netlify/functions/voicechat';
+
     let p = document.createElement('p');
     body.append(p);
     await completion([{ role: 'user', content: 'Tell me a joke about cats.' }], {
@@ -63,6 +66,6 @@
         console.error(err);
         btn.disabled = false;
       }
-    }, { once: true });
+    });
   </script>
 </body>

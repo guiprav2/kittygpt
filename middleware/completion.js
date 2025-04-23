@@ -14,8 +14,8 @@ async function midcompletion(req, res) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(req.body),
-    })
-    if (req.body.stream) {
+    });
+    if (cr.headers.get('content-type')?.includes?.('text/event-stream')) {
       res.status(cr.status);
       for (let [k, v] of cr.headers) k.toLowerCase() !== 'content-length' && res.setHeader(k, v);
       Readable.fromWeb(cr.body).pipe(res);
