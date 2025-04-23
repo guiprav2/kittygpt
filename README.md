@@ -30,19 +30,20 @@ Published under GPL because software should be free.
   <script type="module">
     import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
 
+    // Set default endpoint and key for both calls
+    completion.defaultEndpoint = 'https://api.openai.com/v1/chat/completions';
+    completion.defaultKey = 'sk-🤫🤫🤫';
+
     // Streaming responses
     let p = document.createElement('p');
     document.body.append(p);
     await completion([{ role: 'user', content: 'Tell me a joke about cats.' }], {
-      key: 'sk-🤫🤫🤫',
-      endpoint: 'https://api.openai.com/v1/chat/completions',
       stream: x => p.textContent += x,
     });
 
     // Function calling
     await completion([{ role: 'user', content: 'Make the cat meow.' }], {
-      key,
-      fns: [{ name: 'meow', handler: () => alert('Meow!') }],
+      fns: { meow: { handler: () => alert('Meow!') } },
     });
   </script>
 </body>
