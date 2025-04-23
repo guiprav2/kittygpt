@@ -23,12 +23,12 @@ Published under GPL because software should be free.
 
 ---
 
-## 🚀 Quick Example
+## 🚀 Quick Example (connects directly to OpenAI)
 
 ```html
 <body>
   <script type="module">
-    import completion from 'https://esm.sh/@camilaprav/kittygpt';
+    import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
 
     // Streaming responses
     let p = document.createElement('p');
@@ -48,9 +48,15 @@ Published under GPL because software should be free.
 </body>
 ```
 
+_Note: This exposes your API key on the client-side which is a big no-no except for simple demos like this one._
+
+Another valid possibility for this however is allowing end-users to provide their own OpenAI key.
+
+See [🐾 Local Proxy & Hosting Guide](#-local-proxy--hosting-guide) below on how to run your own proxy server that securely holds your key instead.
+
 ---
 
-## 💠 Main API: `completion(logs, opt = {})`
+## 💠 The main dish: `completion(logs, opt = {})`
 
 ```js
 completion(logs, {
@@ -177,11 +183,11 @@ completion.defaultLogger = myCustomLogger;
 The default API endpoint and model used by `completion()` are:
 
 ```js
-completion.defaultEndpoint = 'https://api.openai.com/v1/chat/completions';
+completion.defaultEndpoint = '/completion';
 completion.defaultModel = 'gpt-4o';
 ```
 
-You can override these at runtime if you're using a self-hosted model, proxy, or just want different defaults for your environment:
+You can override these at runtime if you're connecting directly to OpenAI or just want different defaults for your own environment:
 
 ```js
 completion.defaultEndpoint = 'http://localhost:11434/v1/chat/completions';
@@ -197,7 +203,7 @@ If you want to change these settings per-call instead of globally, just use the 
 ## ⛓️ CDN Usage (browser-friendly)
 
 ```bash
-import completion from 'https://esm.sh/@camilaprav/kittygpt';
+import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
 ```
 
 ---
@@ -207,6 +213,110 @@ import completion from 'https://esm.sh/@camilaprav/kittygpt';
 ```bash
 npm install @camilaprav/kittygpt
 ```
+
+---
+
+## 🐾 Local Proxy & Hosting Guide
+
+Running `kittygpt` in the browser with your own API key is fine for demos,
+but not safe for production use (unless you're letting end-users provide their own key).
+To secure your key or allow user-supplied keys, you should run your own proxy server.
+
+Two options are available:
+
+---
+
+### 🔁 Option 1: Use `kittygpt-serve`
+
+If you want a **zero-setup local server** that exposes `/completion` and `/voicechat`
+endpoints and serves your HTML demos, just run:
+
+```bash
+npx @camilaprav/kittygpt-serve
+```
+
+This will:
+
+- Serve `index.html` (and whatever else is in your current directory) on `http://localhost:3000`
+- Proxy `/completion` to OpenAI's chat completions API
+- Proxy `/voicechat` to OpenAI's real-time voice API
+- With CORS support
+
+To use it:
+
+1. Create a file named `index.html`:
+
+```html
+<body>
+  <script type="module">
+    import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
+    let p = document.createElement('p');
+    document.body.append(p);
+    await completion([{ role: 'user', content: 'Tell me a joke about cats.' }], {
+      stream: x => p.textContent += x,
+    });
+  </script>
+</body>
+```
+
+2. Create a `.env` file:
+
+```
+OPENAI_API_COMPLETIONS_ENDPOINT=https://api.openai.com/v1/chat/completions
+OPENAI_API_VOICECHAT_ENDPOINT=https://api.openai.com/v1/realtime/sessions
+OPENAI_API_KEY=sk-🤫🤫🤫
+```
+
+3. Then run:
+
+```bash
+npx @camilaprav/kittygpt-serve
+```
+
+Visit `http://localhost:3000` and see it working!
+
+---
+
+### 🧩 Option 2: Create Your Own Express Server
+
+Want more control or embedding in your own app? `kittygpt` exports two middlewares,
+which can be used like this:
+
+```js
+import express from 'express';
+import dotenv from 'dotenv';
+import midcompletion from '@camilaprav/kittygpt/middleware/completion.js';
+import midvoicechat from '@camilaprav/kittygpt/middleware/voicechat.js';
+
+dotenv.config();
+let app = express();
+app.use(express.json());
+app.post('/completion', midcompletion);
+app.get('/voicechat', midvoicechat);
+
+app.listen(3000, () => {
+  console.log('Your server ready on http://localhost:3000');
+});
+```
+
+You can now:
+
+- Make `completion()` calls without specifying a key or endpoint (the defaults should work for this setup).
+- Make `voicecall()` calls to talk to ChatGPT in realtime instead of typing. Yay!
+
+Don't forget to set your `OPENAI_API_KEY` in `.env`!
+
+---
+
+## ✅ Recommendation
+
+For beginners or local testing, just run:
+
+```bash
+npx @camilaprav/kittygpt-serve
+```
+
+For more flexibility or production use, copy the middleware into your own server.
 
 ---
 
