@@ -11,7 +11,7 @@ Published under GPL because software should be free.
 
 ---
 
-## ✨ Features
+## ✨ Features (Completion API)
 
 - `completion(logs, opt = {})` — one function to rule them all.
 - `opt.stream` support (token-by-token callbacks).
