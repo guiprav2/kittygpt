@@ -1,6 +1,6 @@
 # 🐈‍⬛ kittygpt
 
-A friendly, minimalist, fully-featured ChatGPT completion library.
+A friendly, minimalist, fully-featured ChatGPT completion + voice chat library.
 
 - Tiny, isomorphic, no dependencies.
 - Streaming, function calling, retries, system message handling.
@@ -198,6 +198,125 @@ completion.defaultModel = 'mistral-7b';
 This makes `kittygpt` flexible across providers while keeping the interface stable.
 
 If you want to change these settings per-call instead of globally, just use the `model` and `endpoint` options when calling `completion()`.
+
+---
+
+## 🗣️ Voice Chat API: `voicechat(opt = {})`
+
+This function connects to the OpenAI real-time API to enable **bi-directional voice chat**. Works in both **browsers** and **NodeJS**, and supports **function calling** during a conversation.
+
+> Requires a local proxy server to work.
+>
+> Use [`kittygpt-serve`](https://www.npmjs.com/package/@camilaprav/kittygpt-serve) or [roll your own Express server](#-local-proxy--hosting-guide) using the provided middlewares.
+
+---
+
+## ✨ Browser Example (with voice functions)
+
+```html
+<body>
+  <button id="VoiceChatBtn">Start Voice Chat</button>
+  <script type="module">
+    import voicechat from 'https://esm.sh/@camilaprav/kittygpt/voicechat.js';
+
+    document.querySelector('#VoiceChatBtn').addEventListener('click', async ev => {
+      ev.target.disabled = true;
+      let session = await voicechat({
+        fns: {
+          setBgColor: {
+            parameters: {
+              type: 'object',
+              properties: {
+                color: { type: 'string', description: 'Background color value in hex' }
+              },
+              required: ['color']
+            },
+            handler: ({ color }) => { document.body.style.backgroundColor = color; }
+          }
+        }
+      });
+      session.sysupdate({ main: "You're a helpful voice assistant." });
+    });
+  </script>
+</body>
+```
+
+---
+
+## 🧪 NodeJS Example
+
+```bash
+npm install @camilaprav/kittygpt
+```
+
+```js
+import voicechat from '@camilaprav/kittygpt/voicechat.js';
+
+let session = await voicechat({
+  endpoint: 'http://localhost:3000/voicechat', // via kittygpt-serve or your server
+  fns: {
+    goodbye: {
+      description: "Say goodbye and stop the session.",
+      handler: () => {
+        console.log('Goodbye!');
+        session.stop();
+      }
+    }
+  },
+  debug: true
+});
+
+session.sysupdate({ main: "You're ChatGPT, a helpful voice chat assistant." });
+```
+
+---
+
+## 📦 Options
+
+```ts
+voicechat({
+  endpoint,     // 🛠️ Server endpoint for session token (defaults to /voicechat)
+  model,        // 🧠 Model to use (default: gpt-4o-realtime-preview)
+  voice,        // 🎤 Voice to use (default: alloy)
+  transcript,   // 📋 Callback for partial transcripts (delta => ...)
+  fns,          // 🧰 Function calling map: name -> { parameters, handler }
+  debug         // 🐞 Logs internal activity (peer events, streams, etc)
+})
+```
+
+Returns a session object with:
+
+```js
+{
+  sysupdate(),   // 🪄 Update system instructions or function list
+  setfns()       // 🔁 Replace all functions at runtime
+  stop(),        // ⛔️ Gracefully stops the session and frees all resources
+}
+```
+
+---
+
+## 📌 Requirements
+
+The `voicechat()` API **requires** a server to:
+
+- Request a real-time session token from OpenAI
+- Return that token to the client
+
+You can:
+
+- Use `npx @camilaprav/kittygpt-serve` for a zero-config local server.
+- Or plug the provided middleware into your own Express app.
+- See [Local Proxy & Hosting Guide](#-local-proxy--hosting-guide) for instructions on both options.
+
+---
+
+## 🧠 Notes
+
+- In NodeJS, the mic and speaker are automatically handled for you.
+- In the browser, the user must give permission to access the mic.
+- Function calling works exactly like it does in `completion()`, but uses voice as input instead.
+- This API is experimental and may change. Feedback welcome!
 
 ---
 
