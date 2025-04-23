@@ -1,3 +1,4 @@
+let tap = x => (console.log(x), x);
 let isBrowser = typeof window !== 'undefined' && typeof navigator !== 'undefined';
 async function createBackend(debug) { return isBrowser ? await createBrowserBackend(debug) : await createNodeBackend(debug) }
 
@@ -163,8 +164,8 @@ export async function voicechat({ endpoint, model, voice, transcript, fns = {}, 
     let msg = JSON.parse(event.data);
     if (msg.type === "response.audio_transcript.delta") transcript?.(msg.delta);
     if (msg.type === "response.function_call_arguments.done" && msg.name in fns) {
+      let { call_id, arguments: argsJSON } = msg;
       try {
-        let { call_id, arguments: argsJSON } = msg;
         let args = JSON.parse(argsJSON);
         let handler = fns[msg.name].handler;
         let result = await Promise.resolve(handler(args));
@@ -173,12 +174,21 @@ export async function voicechat({ endpoint, model, voice, transcript, fns = {}, 
           item: {
             type: "function_call_output",
             call_id,
-            output: JSON.stringify(result || { success: true })
+            output: JSON.stringify(result ?? { success: true })
           }
         }));
         dc.send(JSON.stringify({ type: "response.create" }));
       } catch (e) {
-        console.error("Function call error:", e);
+        dc.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id,
+            output: JSON.stringify({ success: false, error: e.message }),
+          }
+        }));
+        dc.send(JSON.stringify({ type: "response.create" }));
+        console.error(e);
       }
     }
   };
