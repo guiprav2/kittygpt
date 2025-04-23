@@ -87,8 +87,7 @@ async function completion(logs, opt = {}) {
     if (data && data.choices[0].message.function_call) {
       let call = data.choices[0].message.function_call;
       let fn = opt.fns[call.name];
-      let ret = await fn.handler?.(JSON.parse(call.arguments));
-      return { role: 'function_call', details: call, ret };
+      return await fn.handler?.(JSON.parse(call.arguments));
     }
     if (opt.stream) {
       let finalMessage = await bodystream(res.body, opt.stream);
