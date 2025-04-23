@@ -359,28 +359,6 @@ OPENAI_API_KEY=sk-🤫🤫🤫
 
 ---
 
-## ⛓️ CDN Usage (browser-friendly)
-
-```bash
-import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
-// use it
-```
-
----
-
-## 📦 Install (for Node, etc.)
-
-```bash
-npm install @camilaprav/kittygpt
-```
-
-```js
-import completion from '@camilaprav/kittygpt/completion.js';
-// use it
-```
-
----
-
 ## 🐾 Local Proxy & Hosting Guide
 
 Running `kittygpt` in the browser with your own API key is fine for demos,
