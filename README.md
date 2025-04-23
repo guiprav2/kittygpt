@@ -340,7 +340,7 @@ import midvoicechat from '@camilaprav/kittygpt/middleware/voicechat.js';
 app.get('/voicechat', midvoicechat);
 ```
 
-Be sure to set this in your `.env`:
+Be sure to set this in your `.env` (and load it using `dotenv`):
 
 ```
 OPENAI_API_VOICECHAT_ENDPOINT=https://api.openai.com/v1/realtime/sessions
