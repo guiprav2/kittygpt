@@ -74,6 +74,7 @@ async function completion(logs, opt = {}) {
   let tries = 0;
   while (true) {
     let headers = { 'Content-Type': 'application/json' };
+    if (opt.key && opt.key.length < 32) throw new Error(`Invalid key, make sure to replace the placeholder with your own`);
     if (opt.key) headers['Authorization'] = `Bearer ${opt.key}`;
     let res = await fetch(opt.endpoint || completion.defaultEndpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
     if (!res.ok) {
