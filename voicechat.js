@@ -149,6 +149,7 @@ export async function voicechat({ endpoint, model, voice, transcript, fns = {}, 
   };
 
   async function prompt(text) {
+    if (!globalThis.meSpeak) throw new Error(`meSpeak dependency not loaded`);
     const context = new AudioContext();
 
     // 1. Get mic and create a source
@@ -227,7 +228,7 @@ export async function voicechat({ endpoint, model, voice, transcript, fns = {}, 
             output: JSON.stringify(result ?? { success: true })
           }
         }));
-        dc.send(JSON.stringify({ type: "response.create" }));
+        fns[msg.name].respond !== false && dc.send(JSON.stringify({ type: "response.create" }));
       } catch (e) {
         dc.send(JSON.stringify({
           type: "conversation.item.create",
