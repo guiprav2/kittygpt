@@ -132,7 +132,6 @@ export async function voicechat({ endpoint, model, voice, transcript, fns = {}, 
         description: fns[name].description || "No description",
         parameters: fns[name].parameters || {}
       }));
-
       dc.send(JSON.stringify({
         type: "session.update",
         session: {
@@ -148,6 +147,57 @@ export async function voicechat({ endpoint, model, voice, transcript, fns = {}, 
     fns = newFns;
     sysupdate();
   };
+
+  async function prompt(text) {
+    const context = new AudioContext();
+
+    // 1. Get mic and create a source
+    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const micSource = context.createMediaStreamSource(micStream);
+
+    // 2. Generate meSpeak WAV and decode it
+    const p = Promise.withResolvers();
+    meSpeak.speak(text, {
+      speed: 200,
+      rawdata: 'buffer',
+      callback: (success, id, wav) => {
+        if (!success) return p.reject(new Error(`meSpeak failure`));
+        p.resolve(wav);
+      },
+    });
+    const wav = await p.promise;
+    const audioBuffer = await context.decodeAudioData(wav);
+
+    // 3. Create meSpeak audio source
+    const synthSource = context.createBufferSource();
+    synthSource.buffer = audioBuffer;
+
+    // 4. Mix mic + synth into a shared destination
+    const dest = context.createMediaStreamDestination();
+    micSource.connect(dest);
+    synthSource.connect(dest);
+
+    // 5. Start the synth source
+    synthSource.start();
+
+    // 6. Inject the mixed track into the outgoing peer connection
+    const mixedTrack = dest.stream.getAudioTracks()[0];
+    const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
+    if (sender) {
+      await sender.replaceTrack(mixedTrack);
+    } else {
+      console.warn("No audio sender found.");
+    }
+
+    // 7. After synth finishes, revert to clean mic
+    synthSource.onended = async () => {
+      const freshStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const micTrack = freshStream.getAudioTracks()[0];
+      if (micTrack && sender) {
+        await sender.replaceTrack(micTrack);
+      }
+    };
+  }
 
   pc.ontrack = (e) => {
     let [track] = e.streams[0].getAudioTracks();
@@ -210,7 +260,7 @@ export async function voicechat({ endpoint, model, voice, transcript, fns = {}, 
 
   debug && console.log("✅ Voice session started");
 
-  return { stop, sysupdate, setfns };
+  return { stop, sysupdate, setfns, prompt };
 }
 
 voicechat.defaultEndpoint = '/voicechat';
