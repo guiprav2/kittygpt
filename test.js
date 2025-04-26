@@ -19,6 +19,18 @@ switch (type) {
   case 'voice': {
     let session = await voicechat({ endpoint: 'http://localhost:3000/voicechat', debug: debug === 'debug' });
     session.sysupdate({ main: `You're ChatGPT, a helpful voice chat assistant.` });
+    session.sysupdate(null, {
+      printAsciiArt: {
+        parameters: {
+          type: 'object',
+          properties: {
+            ascii: { type: 'string', description: `An ASCII-art string` },
+          },
+          required: ['ascii'],
+        },
+        handler: ({ ascii }) => { console.log(`ASCII art:`); console.log(ascii) }
+      },
+    });
     break;
   }
 }

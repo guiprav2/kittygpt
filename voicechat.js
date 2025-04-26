@@ -145,7 +145,8 @@ export async function voicechat({
   let { pc, attachSpeaker, stop } = await createBackend(debug);
   let dc = pc.createDataChannel('oai-events');
 
-  let sysupdate = (kvs = {}, newFns) => {
+  let sysupdate = (kvs, newFns) => {
+    kvs ??= {};
     for (let [k, v] of Object.entries(kvs)) {
       if (v === null) delete smap[k];
       else smap[k] = v;
