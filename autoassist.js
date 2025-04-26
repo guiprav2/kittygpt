@@ -107,19 +107,21 @@ async function fillInput(inputElement, text, delay = 50) {
   }
 }
 
-function createFns(meta) {
+function createFns(meta, silent) {
   let fns = {
     navback: {
       handler: async () => {
         history.back();
         await new Promise(pres => setTimeout(pres, 1000));
       },
+      respond: !silent,
     },
     navforward: {
       handler: async () => {
         history.forward();
         await new Promise(pres => setTimeout(pres, 1000));
       },
+      respond: !silent,
     },
     click: {
       parameters: {
@@ -133,6 +135,7 @@ function createFns(meta) {
         required: ['kittyid'],
       },
       handler: ({ kittyid }) => meta[kittyid].click(),
+      respond: !silent,
     },
     fillText: {
       parameters: {
@@ -149,6 +152,7 @@ function createFns(meta) {
       },
       handler: async ({ kittyid, text }) =>
         await fillInput(meta[kittyid], text),
+      respond: !silent,
     },
   };
   for (let [k, v] of Object.entries(meta)) {
@@ -169,6 +173,7 @@ function createFns(meta) {
           meta[k].dispatchEvent(new Event('input', { bubbles: true }));
           meta[k].dispatchEvent(new Event('change', { bubbles: true }));
         },
+        respond: !silent,
       };
     }
   }
@@ -178,7 +183,7 @@ function createFns(meta) {
 async function autoassist(opt) {
   let [snap, meta] = htmlsnap();
   let session = await voicechat(opt);
-  session.sysupdate({ html: snap }, createFns(meta));
+  session.sysupdate({ html: snap }, createFns(meta, opt.silent));
   let mutobs = new MutationObserver(() => {
     let dirty = false;
     let [newSnap, newMeta] = htmlsnap(meta);
