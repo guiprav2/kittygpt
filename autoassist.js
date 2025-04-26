@@ -142,10 +142,7 @@ function createFns(meta) {
         },
         required: ['kittyid'],
       },
-      handler: ({ kittyid }) => {
-        console.log('click:', kittyid);
-        meta[kittyid].click();
-      },
+      handler: ({ kittyid }) => meta[kittyid].click(),
     },
     fillText: {
       parameters: {
@@ -160,10 +157,8 @@ function createFns(meta) {
         },
         required: ['kittyid', 'text'],
       },
-      handler: async ({ kittyid, text }) => {
-        console.log('fill:', kittyid, '=>', text);
-        await fillInput(meta[kittyid], text);
-      },
+      handler: async ({ kittyid, text }) =>
+        await fillInput(meta[kittyid], text),
     },
   };
   for (let [k, v] of Object.entries(meta)) {
@@ -187,7 +182,6 @@ function createFns(meta) {
       };
     }
   }
-  console.log(fns, meta);
   return fns;
 }
 
@@ -206,10 +200,9 @@ async function autoassist(opt) {
       }
       if (!dirty) return;
       session.sysupdate({ html: snap }, createFns(meta));
-      console.log('UPDATE', Math.random());
     }, 500),
   );
-  mutobs.observe(document.body, {
+  mutobs.observe(document.documentElement, {
     attributes: true,
     childList: true,
     subtree: true,
