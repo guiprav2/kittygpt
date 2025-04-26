@@ -70,16 +70,6 @@ function htmlsnap(meta = {}) {
   ];
 }
 
-function debounce(fn, delay) {
-  let timeoutId;
-  return function (...args) {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => {
-      fn.apply(this, args);
-    }, delay);
-  };
-}
-
 async function fillInput(inputElement, text, delay = 50) {
   // Step 1: Clear input and fire 'change'
   inputElement.value = '';
@@ -189,19 +179,17 @@ async function autoassist(opt) {
   let [snap, meta] = htmlsnap();
   let session = await voicechat(opt);
   session.sysupdate({ html: snap }, createFns(meta));
-  let mutobs = new MutationObserver(
-    debounce(() => {
-      let dirty = false;
-      let [newSnap, newMeta] = htmlsnap(meta);
-      if (snap !== newSnap) {
-        dirty = true;
-        snap = newSnap;
-        meta = newMeta;
-      }
-      if (!dirty) return;
-      session.sysupdate({ html: snap }, createFns(meta));
-    }, 500),
-  );
+  let mutobs = new MutationObserver(() => {
+    let dirty = false;
+    let [newSnap, newMeta] = htmlsnap(meta);
+    if (snap !== newSnap) {
+      dirty = true;
+      snap = newSnap;
+      meta = newMeta;
+    }
+    if (!dirty) return;
+    session.sysupdate({ html: snap }, createFns(meta));
+  });
   mutobs.observe(document.documentElement, {
     attributes: true,
     childList: true,
