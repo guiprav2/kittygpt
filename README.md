@@ -16,6 +16,7 @@ Don't let the short README fool you. All the juicy details can be found in the w
 
 - [Completion API](https://github.com/camilaprav/kittygpt/wiki/Completion-API): A complete guide into the completion API part of the library. Documents configuration, basic usage, streaming, function calls, and exposed internal helpers.
 - [Voice Chat API](https://github.com/camilaprav/kittygpt/wiki/Voice-Chat-API): The same, but for voice chat. Documents both browser and NodeJS usage, as well as function calling.
+- [Autoassist API](https://github.com/camilaprav/kittygpt/wiki/Autoassist-API): The same, but for the autoassist API. Use this API to turn any SPA into a fully voice-interactive app with a single function call!
 
 ---
 
