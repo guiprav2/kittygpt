@@ -188,9 +188,10 @@ export async function voicechat({
 
   async function prompt(text, polite) {
     if (!globalThis.meSpeak) throw new Error(`meSpeak dependency not loaded`);
+
     const context = new AudioContext();
 
-    // 1. Get mic and create a source
+    // 1. Get fresh mic stream
     const micStream = await navigator.mediaDevices.getUserMedia({
       audio: true,
     });
@@ -209,7 +210,7 @@ export async function voicechat({
     const wav = await p.promise;
     const audioBuffer = await context.decodeAudioData(wav);
 
-    // 3. Create meSpeak audio source
+    // 3. Create fresh synthSource
     const synthSource = context.createBufferSource();
     synthSource.buffer = audioBuffer;
 
@@ -218,10 +219,7 @@ export async function voicechat({
     micSource.connect(dest);
     synthSource.connect(dest);
 
-    // 5. Start the synth source
-    synthSource.start();
-
-    // 6. Inject the mixed track into the outgoing peer connection
+    // 5. Inject mixed track into outgoing peer connection
     const mixedTrack = dest.stream.getAudioTracks()[0];
     const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
     if (!sender) {
@@ -230,18 +228,24 @@ export async function voicechat({
     }
     await sender.replaceTrack(mixedTrack);
 
+    let monitorStop = null;
+    let synthStoppedManually = false;
+
+    // 6. Start synthSource exactly once
     synthSource.start();
 
-    // Fresh mic monitor attached to micStream directly (not micSource!)
-    let monitorStop = null;
+    // 7. Mic noise monitoring
     if (polite) {
       monitorStop = monitorMicNoise(context, micStream, async () => {
-        console.log('Mic noise detected during TTS, stopping early.');
-        synthSource.stop();
+        debug && console.log('🤫 Mic noise detected during TTS, stopping early.');
+        if (!synthStoppedManually) {
+          synthStoppedManually = true;
+          synthSource.stop(); // triggers onended
+        }
       });
     }
 
-    // 7. After synth finishes, revert to clean mic
+    // 8. When TTS ends
     synthSource.onended = async () => {
       if (monitorStop) monitorStop();
       const freshStream = await navigator.mediaDevices.getUserMedia({
@@ -251,9 +255,11 @@ export async function voicechat({
       if (micTrack && sender) {
         await sender.replaceTrack(micTrack);
       }
+      context.close(); // Always clean up your audio context
     };
   }
 
+  // Monitor mic noise with fresh micSource
   function monitorMicNoise(
     audioContext,
     micStream,
