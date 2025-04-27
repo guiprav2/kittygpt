@@ -34,6 +34,7 @@ try {
     }
 
     case 'voice': {
+      console.log(`🎧 WARNING: Use headphones to avoid ChatGPT hearing itself and entering a loop.`);
       let session = await voicechat({ endpoint: 'http://localhost:3000/voicechat', debug: debug === 'debug' });
       session.sysupdate({ main: `You're ChatGPT, a helpful voice chat assistant.` });
       session.sysupdate(null, {
