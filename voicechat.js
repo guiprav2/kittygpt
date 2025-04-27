@@ -321,6 +321,8 @@ export async function voicechat({
         let args = JSON.parse(argsJSON);
         let handler = fns[msg.name].handler;
         let result = await Promise.resolve(handler(args));
+        let respond = result.respond === undefined ? fns[msg.name].respond : result.respond;
+        delete result.respond;
         dc.send(
           JSON.stringify({
             type: 'conversation.item.create',
@@ -331,8 +333,7 @@ export async function voicechat({
             },
           }),
         );
-        fns[msg.name].respond !== false &&
-          dc.send(JSON.stringify({ type: 'response.create' }));
+        respond && dc.send(JSON.stringify({ type: 'response.create' }));
       } catch (e) {
         dc.send(
           JSON.stringify({
