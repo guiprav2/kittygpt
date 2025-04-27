@@ -186,7 +186,7 @@ export async function voicechat({
     }
   };
 
-  async function prompt(text) {
+  async function prompt(text, polite) {
     if (!globalThis.meSpeak) throw new Error(`meSpeak dependency not loaded`);
     const context = new AudioContext();
 
@@ -224,14 +224,26 @@ export async function voicechat({
     // 6. Inject the mixed track into the outgoing peer connection
     const mixedTrack = dest.stream.getAudioTracks()[0];
     const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
-    if (sender) {
-      await sender.replaceTrack(mixedTrack);
-    } else {
+    if (!sender) {
       console.warn('No audio sender found.');
+      return;
+    }
+    await sender.replaceTrack(mixedTrack);
+
+    synthSource.start();
+
+    // Fresh mic monitor attached to micStream directly (not micSource!)
+    let monitorStop = null;
+    if (polite) {
+      monitorStop = monitorMicNoise(context, micStream, async () => {
+        console.log('Mic noise detected during TTS, stopping early.');
+        synthSource.stop();
+      });
     }
 
     // 7. After synth finishes, revert to clean mic
     synthSource.onended = async () => {
+      if (monitorStop) monitorStop();
       const freshStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });
@@ -239,6 +251,43 @@ export async function voicechat({
       if (micTrack && sender) {
         await sender.replaceTrack(micTrack);
       }
+    };
+  }
+
+  function monitorMicNoise(
+    audioContext,
+    micStream,
+    onNoiseDetected,
+    threshold = 0.4,
+  ) {
+    const micSource = audioContext.createMediaStreamSource(micStream);
+    const analyser = audioContext.createAnalyser();
+    micSource.connect(analyser);
+    analyser.fftSize = 512;
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    let stopped = false;
+
+    function check() {
+      if (stopped) return;
+      analyser.getByteFrequencyData(dataArray);
+      const average =
+        dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
+      const normalized = average / 255;
+      if (normalized > threshold) {
+        stopped = true;
+        onNoiseDetected();
+      } else {
+        requestAnimationFrame(check);
+      }
+    }
+
+    check();
+
+    return () => {
+      stopped = true;
+      micSource.disconnect(analyser);
+      analyser.disconnect();
+      micStream.getTracks().forEach(t => t.stop());
     };
   }
 
