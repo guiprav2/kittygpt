@@ -22,7 +22,12 @@ async function createBrowserBackend() {
   return {
     pc,
     attachSpeaker,
-    stop: () => stream.getTracks().forEach(track => track.stop()),
+    stop: () => {
+      stream.getTracks().forEach(track => track.stop());
+      pc.getSenders().forEach(sender => pc.removeTrack(sender));
+      pc.close();
+      audio.srcObject = null;
+    },
   };
 }
 
