@@ -141,7 +141,6 @@ export async function voicechat({
   model,
   voice,
   transcript,
-  fns = {},
   debug = false,
 } = {}) {
   let url = `${endpoint || voicechat.defaultEndpoint}?model=${model || voicechat.defaultModel}&voice=${voice || voicechat.defaultVoice}`;
@@ -152,15 +151,16 @@ export async function voicechat({
   let { EventEmitter, pc, attachSpeaker, stop } = await createBackend(debug);
   let events = new EventEmitter();
   let smap = {};
+  let fns = {};
   let dc = pc.createDataChannel('oai-events');
 
-  let sysupdate = (kvs, newFns) => {
+  let sysupdate = (kvs, newFns, merge = true) => {
     kvs ??= {};
     for (let [k, v] of Object.entries(kvs)) {
       if (v === null) delete smap[k];
       else smap[k] = v;
     }
-    if (newFns) fns = newFns;
+    if (newFns) fns = merge ? { ...fns, ...newFns } : newFns;
     if (dc.readyState === 'open') {
       let tools = Object.keys(fns).map(name => ({
         name,
