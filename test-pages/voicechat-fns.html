@@ -1,0 +1,20 @@
+<body>
+  <button id="start" style="color: inherit">Start Voice Chat</button>
+  <script src="/mespeak/mespeak.js"></script>
+  <script>
+    meSpeak.loadVoice("voices/en/en-us.json", (success, err) => {
+      if (!success) throw new Error(err);
+      meSpeak.ready = true;
+    });
+  </script>
+  <script type="module">
+    import voicechat from '../voicechat.js';
+    window.fncalled = false;
+    document.querySelector('#start').onclick = async ev => {
+      ev.target.disabled = true;
+      let session = await voicechat();
+      session.sysupdate(null, { sampleFunction: { handler: () => fncalled = true } });
+      session.prompt(`Call the sample function.`);
+    };
+  </script>
+</body>

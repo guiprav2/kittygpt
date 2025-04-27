@@ -1,0 +1,21 @@
+<body>
+  <button id="start" style="color: inherit">Start Voice Chat</button>
+  <script src="/mespeak/mespeak.js"></script>
+  <script>
+    meSpeak.loadVoice("voices/en/en-us.json", (success, err) => {
+      if (!success) throw new Error(err);
+      meSpeak.ready = true;
+    });
+  </script>
+  <script type="module">
+    import voicechat from '../voicechat.js';
+    window.transcript = '';
+    window.done = false;
+    document.querySelector('#start').onclick = async ev => {
+      ev.target.disabled = true;
+      let session = await voicechat({ transcript: x => transcript += x });
+      session.prompt(`Literally say the word "hello". Keep it short.`);
+      session.events.on('output_audio_buffer.stopped', () => done = true);
+    };
+  </script>
+</body>

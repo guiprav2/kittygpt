@@ -7,6 +7,7 @@ async function createBackend(debug) {
 }
 
 async function createBrowserBackend() {
+  let EventEmitter = (await import('https://esm.sh/event-emitter')).default;
   let RTCPeerConnection = window.RTCPeerConnection;
   let pc = new RTCPeerConnection();
   let audio = new Audio();
@@ -20,6 +21,7 @@ async function createBrowserBackend() {
     }
   };
   return {
+    EventEmitter,
     pc,
     attachSpeaker,
     stop: () => {
@@ -32,6 +34,7 @@ async function createBrowserBackend() {
 }
 
 async function createNodeBackend(debug = false) {
+  let EventEmitter = (await import('events')).default;
   const wrtc = (await import('wrtc')).default;
   const { RTCPeerConnection, nonstandard } = wrtc;
   const { RTCAudioSource, RTCAudioSink } = nonstandard;
@@ -130,7 +133,7 @@ async function createNodeBackend(debug = false) {
     return micInstance.stop(); // trusted behavior
   };
 
-  return { pc, attachSpeaker, stop };
+  return { EventEmitter, pc, attachSpeaker, stop };
 }
 
 export async function voicechat({
@@ -146,8 +149,9 @@ export async function voicechat({
   let token = session.client_secret?.value || session.client_secret;
   if (!token) throw new Error('Invalid session token');
 
+  let { EventEmitter, pc, attachSpeaker, stop } = await createBackend(debug);
+  let events = new EventEmitter();
   let smap = {};
-  let { pc, attachSpeaker, stop } = await createBackend(debug);
   let dc = pc.createDataChannel('oai-events');
 
   let sysupdate = (kvs, newFns) => {
@@ -248,6 +252,7 @@ export async function voicechat({
 
   dc.onmessage = async event => {
     let msg = JSON.parse(event.data);
+    events.emit(msg.type, msg);
     if (msg.type === 'response.audio_transcript.delta') transcript?.(msg.delta);
     if (
       msg.type === 'response.function_call_arguments.done' &&
@@ -304,7 +309,7 @@ export async function voicechat({
 
   debug && console.log('✅ Voice session started');
 
-  return { stop, sysupdate, prompt };
+  return { events, stop, sysupdate, prompt };
 }
 
 voicechat.defaultEndpoint = '/voicechat';
