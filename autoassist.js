@@ -107,21 +107,21 @@ async function fillInput(inputElement, text, delay = 50) {
   }
 }
 
-function createFns(meta, silent) {
+function createFns(meta, opt = {}) {
   let fns = {
-    navback: {
+    navback: !opt.navdisable && {
       handler: async () => {
         history.back();
         await new Promise(pres => setTimeout(pres, 1000));
       },
-      respond: !silent,
+      respond: !opt.silent,
     },
-    navforward: {
+    navforward: !opt.navdisable && {
       handler: async () => {
         history.forward();
         await new Promise(pres => setTimeout(pres, 1000));
       },
-      respond: !silent,
+      respond: !opt.silent,
     },
     click: {
       parameters: {
@@ -135,7 +135,7 @@ function createFns(meta, silent) {
         required: ['kittyid'],
       },
       handler: ({ kittyid }) => meta[kittyid].click(),
-      respond: !silent,
+      respond: !opt.silent,
     },
     fillText: {
       parameters: {
@@ -152,7 +152,7 @@ function createFns(meta, silent) {
       },
       handler: async ({ kittyid, text }) =>
         await fillInput(meta[kittyid], text),
-      respond: !silent,
+      respond: !opt.silent,
     },
   };
   for (let [k, v] of Object.entries(meta)) {
@@ -173,7 +173,7 @@ function createFns(meta, silent) {
           meta[k].dispatchEvent(new Event('input', { bubbles: true }));
           meta[k].dispatchEvent(new Event('change', { bubbles: true }));
         },
-        respond: !silent,
+        respond: !opt.silent,
       };
     }
   }
@@ -183,7 +183,10 @@ function createFns(meta, silent) {
 async function autoassist(opt) {
   let [snap, meta] = htmlsnap();
   let session = await voicechat(opt);
-  session.sysupdate({ html: snap }, createFns(meta, opt.silent));
+  session.sysupdate(
+    { html: snap },
+    createFns(meta, { navdisable: opt.navdisable, silent: opt.silent }),
+  );
   let mutobs = new MutationObserver(() => {
     let dirty = false;
     let [newSnap, newMeta] = htmlsnap(meta);
@@ -193,7 +196,10 @@ async function autoassist(opt) {
       meta = newMeta;
     }
     if (!dirty) return;
-    session.sysupdate({ html: snap }, createFns(meta));
+    session.sysupdate(
+      { html: snap },
+      createFns(meta, { navdisable: opt.navdisable, silent: opt.silent }),
+    );
   });
   mutobs.observe(document.documentElement, {
     attributes: true,

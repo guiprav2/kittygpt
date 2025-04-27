@@ -161,6 +161,9 @@ export async function voicechat({
       else smap[k] = v;
     }
     if (newFns) fns = merge ? { ...fns, ...newFns } : newFns;
+    for (let [k, v] of Object.entries(fns)) {
+      if (!v) delete fns[k];
+    }
     if (dc.readyState === 'open') {
       let tools = Object.keys(fns).map(name => ({
         name,
