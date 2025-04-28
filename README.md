@@ -9,7 +9,7 @@ A friendly, minimalist, fully-featured ChatGPT completion + voice chat library.
 
 Built because the official SDK fell short.
 
-Published under GPL because software should be free.
+Published under the super-permissive MIT license (see [COPYING](COPYING)).
 
 ---
 
