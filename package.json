@@ -1,6 +1,6 @@
 {
   "name": "@camilaprav/kittygpt",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "description": "A friendly, minimalist, fully-featured ChatGPT completion library",
   "main": "completion.js",
   "type": "module",

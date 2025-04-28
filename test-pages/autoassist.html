@@ -1,0 +1,65 @@
+<body>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 2rem;
+      line-height: 1.5;
+    }
+    button, input, select {
+      margin: 0.5rem 0;
+      display: block;
+    }
+  </style>
+
+  <h1>🐾 KittyGPT Autoassist Test</h1>
+
+  <p>Talk to ChatGPT! Try commands like:</p>
+  <ul>
+    <li>"Click the Submit button."</li>
+    <li>"Select Banana from the fruit menu."</li>
+    <li>"Type Hello World into the text box."</li>
+    <li>"Go back" or "Go forward".</li>
+  </ul>
+
+  <button id="start">🎙️ Start Autoassist</button>
+
+  <h2>Interactive Elements</h2>
+
+  <input type="text" id="textbox" placeholder="Type here...">
+  <select id="fruit">
+    <option value="">--Select a fruit--</option>
+    <option value="apple">Apple</option>
+    <option value="banana">Banana</option>
+    <option value="cherry">Cherry</option>
+  </select>
+  <button id="submit">Submit</button>
+
+  <h2>Status</h2>
+  <p id="status">No actions yet.</p>
+
+  <script src="/mespeak/mespeak.js"></script>
+  <script>
+    meSpeak.loadVoice("voices/en/en-us.json", (success, err) => {
+      if (!success) throw new Error(err);
+      meSpeak.ready = true;
+    });
+  </script>
+
+  <script type="module">
+    import autoassist from '../autoassist.js';
+
+    window.session = null;
+    window.transcript = '';
+    document.getElementById('start').addEventListener('click', async (ev) => {
+      ev.target.disabled = true;
+      session = await autoassist({ transcript: x => transcript += x });
+    });
+
+    document.getElementById('submit').addEventListener('click', () => {
+      const text = document.getElementById('textbox').value;
+      const fruit = document.getElementById('fruit').value;
+      const status = `Submitted text: "${text}", selected fruit: "${fruit || 'none'}".`;
+      document.getElementById('status').textContent = status;
+    });
+  </script>
+</body>
