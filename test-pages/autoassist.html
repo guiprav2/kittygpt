@@ -52,7 +52,10 @@
     window.transcript = '';
     document.getElementById('start').addEventListener('click', async (ev) => {
       ev.target.disabled = true;
-      session = await autoassist({ transcript: x => transcript += x });
+      session = await autoassist({
+        transcript: x => transcript += x,
+        silent: location.hash.includes('silent=true'),
+      });
     });
 
     document.getElementById('submit').addEventListener('click', () => {
