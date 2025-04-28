@@ -9,7 +9,7 @@ A friendly, minimalist, fully-featured ChatGPT completion + voice chat library.
 
 Built because the official SDK fell short.
 
-Published under the super-permissive MIT license (see [COPYING](COPYING)).
+Published under the super-permissive ISC license (see [License](#License)).
 
 ---
 
@@ -58,3 +58,15 @@ Enjoy!
 > And it doesn’t meow around.
 
 — Camila (and maybe you 💜)
+
+---
+
+## License
+
+### ISC (Internet Systems Consortium)
+
+KittyGPT is free software: you can redistribute it and/or modify it under the terms of the [ISC License](COPYING).
+
+## Exclusion of warranty
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
