@@ -1,31 +1,11 @@
+import filterclone from '@camilaprav/filterclone';
 import voicechat from './voicechat.js';
 
 function visible(x) {
-  if (x.classList?.has?.('ai-only')) return true;
+  if (x.classList?.contains?.('ai-invisible')) return false;
+  if (x.classList?.contains?.('ai-only')) return true;
   let rect = x.getBoundingClientRect();
   return rect.width > 0 && rect.height > 0;
-}
-
-function filterclone(root, filter) {
-  let croot = filter(root.cloneNode(false), root);
-  if (!croot) return null;
-  let stack = [{ original: root, clone: croot }];
-  while (stack.length > 0) {
-    let { original, clone } = stack.pop();
-    for (let child = original.firstChild; child; child = child.nextSibling) {
-      let cchild;
-      if (child.nodeType === Node.ELEMENT_NODE) cchild = child.cloneNode(false);
-      else if (child.nodeType === Node.TEXT_NODE)
-        cchild = child.cloneNode(true);
-      else continue;
-      cchild = filter(cchild, child);
-      cchild && clone.appendChild(cchild);
-      if (cchild && child.nodeType === Node.ELEMENT_NODE) {
-        stack.push({ original: child, clone: cchild });
-      }
-    }
-  }
-  return croot;
 }
 
 function htmlsnap(meta = {}) {
@@ -72,6 +52,12 @@ function htmlsnap(meta = {}) {
 }
 
 async function fillInput(inputElement, text, delay = 50) {
+  if (inputElement.type === 'date') {
+    inputElement.value = text;
+    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+    return;
+  }
+
   // Step 1: Clear input and fire 'change'
   inputElement.value = '';
   inputElement.dispatchEvent(new Event('change', { bubbles: true }));

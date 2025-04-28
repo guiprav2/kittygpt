@@ -1,6 +1,6 @@
 {
   "name": "@camilaprav/kittygpt",
-  "version": "0.0.23",
+  "version": "0.0.24",
   "description": "A friendly, minimalist, fully-featured ChatGPT completion library",
   "main": "completion.js",
   "type": "module",
@@ -11,6 +11,7 @@
     "node-test": "node node-test.js"
   },
   "dependencies": {
+    "@camilaprav/filterclone": "^1.0.0",
     "mic": "^2.1.2",
     "speaker": "^0.5.5",
     "wrtc": "^0.4.7"
