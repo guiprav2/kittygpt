@@ -1,6 +1,7 @@
 import voicechat from './voicechat.js';
 
 function visible(x) {
+  if (x.classList?.has?.('ai-only')) return true;
   let rect = x.getBoundingClientRect();
   return rect.width > 0 && rect.height > 0;
 }
