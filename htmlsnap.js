@@ -7,7 +7,8 @@ function visible(x, llm) {
   if (x.tagName && /^script|style|iframe$/i.test(x.tagName)) return false;
   let style = x.nodeType === Node.ELEMENT_NODE && getComputedStyle(x);
   if (style?.display === 'none' || style?.visibility === 'hidden') return false;
-  let rect = x.getBoundingClientRect();
+  let rect = x.getBoundingClientRect?.();
+  if (!rect) return true;
   return rect.width > 0 && rect.height > 0;
 }
 
