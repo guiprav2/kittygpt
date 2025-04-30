@@ -1,55 +1,6 @@
-import filterclone from '@camilaprav/filterclone';
+import BiMap from './bimap.js';
+import htmlsnap from './htmlsnap.js';
 import voicechat from './voicechat.js';
-
-function visible(x) {
-  if (x.classList?.contains?.('ai-invisible')) return false;
-  if (x.classList?.contains?.('ai-only')) return true;
-  let rect = x.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0;
-}
-
-function htmlsnap(meta = {}) {
-  let metarev = new Map([...Object.entries(meta)].map(([k, v]) => [v, k]));
-  let newMeta = {};
-  return [
-    filterclone(document.body, (x, y) => {
-      if (x.nodeType === Node.TEXT_NODE) {
-        x.textContent = x.textContent.trim().replaceAll(/\s+/g, ' ');
-        return x;
-      }
-      if (
-        x.tagName === 'SCRIPT' ||
-        x.tagName === 'STYLE' ||
-        x.tagName === 'IFRAME' ||
-        !visible(y)
-      ) {
-        return null;
-      }
-      let gattrs = [
-        'alt',
-        'title',
-        'href',
-        'src',
-        'type',
-        'name',
-        'placeholder',
-        'value',
-        'id',
-        'role',
-      ];
-      for (let { name: z } of x.attributes) {
-        if (!z.startsWith('aria-') && !gattrs.includes(z)) x.removeAttribute(z);
-      }
-      if (/^a|input|textarea|select|button$/i.test(x.tagName)) {
-        let id = metarev.get(y) || crypto.randomUUID().split('-').at(-1);
-        x.setAttribute('data-kittyid', id);
-        newMeta[id] = y;
-      }
-      return x;
-    }).outerHTML,
-    newMeta,
-  ];
-}
 
 async function fillInput(inputElement, text, delay = 50) {
   if (inputElement.type === 'date') {
@@ -94,7 +45,7 @@ async function fillInput(inputElement, text, delay = 50) {
   }
 }
 
-function createFns(meta, opt = {}) {
+function createFns(map, opt = {}) {
   let fns = {
     navback: !opt.navdisable && {
       handler: async () => {
@@ -121,7 +72,7 @@ function createFns(meta, opt = {}) {
         },
         required: ['kittyid'],
       },
-      handler: ({ kittyid }) => meta[kittyid].click(),
+      handler: ({ kittyid }) => map.get(kittyid).click(),
       respond: !opt.silent,
     },
     fillText: {
@@ -138,11 +89,11 @@ function createFns(meta, opt = {}) {
         required: ['kittyid', 'text'],
       },
       handler: async ({ kittyid, text }) =>
-        await fillInput(meta[kittyid], text),
+        await fillInput(map.get(kittyid), text),
       respond: !opt.silent,
     },
   };
-  for (let [k, v] of Object.entries(meta)) {
+  for (let [k, v] of map.forward.entries()) {
     if (v.tagName === 'SELECT') {
       fns[`select_${k}`] = {
         parameters: {
@@ -156,9 +107,10 @@ function createFns(meta, opt = {}) {
           required: ['value'],
         },
         handler: ({ value }) => {
-          meta[k].value = value;
-          meta[k].dispatchEvent(new Event('input', { bubbles: true }));
-          meta[k].dispatchEvent(new Event('change', { bubbles: true }));
+          let el = map.get(k);
+          el.value = value;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
         },
         respond: !opt.silent,
       };
@@ -168,24 +120,24 @@ function createFns(meta, opt = {}) {
 }
 
 async function autoassist(opt) {
-  let [snap, meta] = htmlsnap();
+  let [snap, map] = htmlsnap(document.body, { map: new BiMap(), llm: true });
   let session = await voicechat(opt);
   session.sysupdate(
     { html: snap },
-    createFns(meta, { navdisable: opt.navdisable, silent: opt.silent }),
+    createFns(map, { navdisable: opt.navdisable, silent: opt.silent }),
   );
   let mutobs = new MutationObserver(() => {
     let dirty = false;
-    let [newSnap, newMeta] = htmlsnap(meta);
+    let [newSnap, newMap] = htmlsnap(document.body, { map, llm: true });
     if (snap !== newSnap) {
       dirty = true;
       snap = newSnap;
-      meta = newMeta;
+      map = newMap;
     }
     if (!dirty) return;
     session.sysupdate(
       { html: snap },
-      createFns(meta, { navdisable: opt.navdisable, silent: opt.silent }),
+      createFns(map, { navdisable: opt.navdisable, silent: opt.silent }),
     );
   });
   mutobs.observe(document.documentElement, {
