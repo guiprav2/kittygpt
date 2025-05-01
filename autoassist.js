@@ -128,7 +128,7 @@ async function autoassist(opt) {
   );
   let mutobs = new MutationObserver(() => {
     let dirty = false;
-    let [newSnap, newMap] = htmlsnap(document.body, { map, llm: true });
+    let [newSnap, newMap] = htmlsnap(document.body, { iframes: opt.iframes, map, llm: true });
     if (snap !== newSnap) {
       dirty = true;
       snap = newSnap;
