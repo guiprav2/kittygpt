@@ -1,6 +1,8 @@
 import autoassist from 'https://esm.sh/@camilaprav/kittygpt/autoassist.js';
 import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
+import markdownit from 'https://esm.sh/markdown-it';
 
+let md = markdownit();
 let loadingPrompt = `The full documentation is loading, if asked about it or details about KittyGPT as a library, say so.`;
 
 export default class Kitty {
@@ -10,9 +12,9 @@ export default class Kitty {
         role: 'system',
         content: [
           `You're KittyGPT, a helpful assistant who loves kittens and code.`,
-          `You are in chat mode, so keep your replies always very short and chat-like.`,
-          `If an answer to a question would be too long to answer, refer to the appropriate wiki page links below (not above).`,
-          `Do not use Markdown.`,
+          `You are in chat mode, so keep your replies very chat-like.`,
+          `If an answer to a question would be too long to answer, refer to the appropriate wiki page links below.`,
+          `Always make a point as to how this differs from the raw OpenAI API or SDK.`,
           loadingPrompt,
         ],
       },
@@ -69,7 +71,7 @@ export default class Kitty {
 
         document
           .getElementById('submit-playground')
-          .addEventListener('click', async () => {
+          .addEventListener('click', async ev => {
             const input = document
               .getElementById('playground-input')
               .value.trim();
@@ -83,29 +85,42 @@ export default class Kitty {
               });*/
 
             logs.push({ role: 'user', content: input });
-
             const userMsg = document.createElement('p');
             userMsg.className = 'text-right text-blue-600';
             userMsg.textContent = '🧍‍♀️ ' + input;
             chatLog.appendChild(userMsg);
             document.getElementById('playground-input').value = '';
+            const botMsg = document.createElement('p');
+            botMsg.className = 'text-left text-pink-600';
+            const initialContent = '🐱 ...';
+            botMsg.textContent = initialContent;
+            chatLog.appendChild(botMsg);
+            chatLog.scrollTop = chatLog.scrollHeight;
+            let content = '';
 
             try {
+              ev.target.disabled = true;
               const res = await completion(logs, {
                 endpoint:
                   'https://kittygpt.netlify.app/.netlify/functions/completion',
                 //key,
+                stream: x => {
+                  if (botMsg.textContent === initialContent) botMsg.textContent = '';
+                  content += x,
+                  botMsg.innerHTML = md.render('🐱 ' + content.replaceAll('above', 'below'));
+                  botMsg.querySelectorAll('a[href]').forEach(x => x.target = '_blank');
+                  chatLog.scrollTop = chatLog.scrollHeight;
+                },
               });
               logs.push({ role: 'assistant', content: res.content });
-
-              const botMsg = document.createElement('p');
-              botMsg.className = 'text-left text-pink-600';
-              botMsg.textContent = '🐱 ' + res.content;
-              chatLog.appendChild(botMsg);
-
-              chatLog.scrollTop = chatLog.scrollHeight;
             } catch (err) {
+              logs.pop();
+              let p = botMsg.parentElement;
+              p.lastElementChild.remove();
+              p.lastElementChild.remove();
               await showModal('Error', { msg: err.message });
+            } finally {
+              ev.target.disabled = false;
             }
           });
       });
