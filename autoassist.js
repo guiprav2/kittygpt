@@ -136,7 +136,6 @@ async function autoassist(opt) {
       if (frameObservers.get(frame)) continue;
       let mutobs = new MutationObserver(handleMutations);
       let observe = () => {
-        console.log('Now observing:', frame);
         mutobs.observe(frame.contentDocument.documentElement, {
           attributes: true,
           characterData: true,

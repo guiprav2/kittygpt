@@ -1,4 +1,4 @@
-function filterclone(root, filter, iframes) {
+function filterclone(root, filter, iframes, nothrow = true) {
   let croot = filter(root.cloneNode(false), root);
   if (!croot) return null;
 
@@ -13,38 +13,50 @@ function filterclone(root, filter, iframes) {
       if (
         iframes &&
         child.nodeType === Node.ELEMENT_NODE &&
-        child.tagName === 'IFRAME' &&
-        child.src &&
-        child.src.startsWith(location.origin) &&
-        child.contentDocument &&
-        child.contentDocument.documentElement
+        child.tagName === 'IFRAME'
       ) {
         try {
-          let div = document.createElement('div');
-          div.setAttribute('data-originaltag', 'iframe');
-          cchild = filter(div, child);
-          if (cchild) {
-            clone.appendChild(cchild);
-            let iframeBody = child.contentDocument.body;
-            let clonedBody = filterclone(iframeBody, filter, true);
-            if (clonedBody) {
-              for (let iframeChild of clonedBody.childNodes) {
-                cchild.appendChild(iframeChild.cloneNode(true));
+          const iframeSrc = child.getAttribute('src');
+          const iframeOrigin = iframeSrc
+            ? new URL(iframeSrc, document.baseURI).origin
+            : null;
+
+          if (
+            iframeOrigin === location.origin &&
+            child.contentDocument &&
+            child.contentDocument.documentElement
+          ) {
+            let div = document.createElement('div');
+            div.setAttribute('data-originaltag', 'iframe');
+            if (iframeSrc) div.setAttribute('data-src', iframeSrc);
+
+            cchild = filter(div, child);
+            if (cchild) {
+              clone.appendChild(cchild);
+              let iframeBody = child.contentDocument.body;
+              let clonedBody = filterclone(iframeBody, filter, true);
+              if (clonedBody) {
+                for (let iframeChild of clonedBody.childNodes) {
+                  cchild.appendChild(iframeChild.cloneNode(true));
+                }
               }
             }
+            continue;
           }
-          continue;
-        } catch (e) {
-          console.warn('Could not access iframe content:', e);
-          cchild = filter(child.cloneNode(false), child);
-        }
-      } else {
+        } catch {}
+      }
+
+      try {
         if (child.nodeType === Node.ELEMENT_NODE) {
           cchild = child.cloneNode(false);
         } else {
           cchild = child.cloneNode(true);
         }
         cchild = filter(cchild, child);
+      } catch (err) {
+        if (!nothrow) throw err;
+        console.warn('Error cloning child:', e);
+        continue;
       }
 
       if (cchild) {
