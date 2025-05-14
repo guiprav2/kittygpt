@@ -333,7 +333,6 @@ export async function voicechat({
             },
           }),
         );
-        console.log(respond);
         respond && dc.send(JSON.stringify({ type: 'response.create' }));
       } catch (e) {
         dc.send(
