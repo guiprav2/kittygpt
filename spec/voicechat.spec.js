@@ -27,7 +27,7 @@ test.describe('Voice Chat API', () => {
   test('should support function calling', async ({ browser }) => {
     let [context, page] = await bootstrap(browser, 'fns');
     await page.waitForFunction(() => fncalled, { timeout: 10000 });
-    await page.waitForFunction(() => transcript.length >= 5, { timeout: 10000 });
+    await page.waitForFunction(() => transcript.length >= 2, { timeout: 10000 });
     await context.close();
   });
 

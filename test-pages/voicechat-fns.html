@@ -14,15 +14,18 @@
     document.querySelector('#start').onclick = async ev => {
       ev.target.disabled = true;
       let session = await voicechat({ transcript: x => transcript += x });
-      session.sysupdate(null, {
+      let fns = {
         sampleFunction: {
           handler: () => {
             fncalled = true;
-            return { success: true, respond: !location.hash.includes('respond=fnfalse') };
+            let ret = { success: true };
+            if (location.hash.includes('respond=fnfalse')) ret.respond = false;
+            return ret;
           },
-          respond: !location.hash.includes('respond=false'),
         },
-      });
+      };
+      if (location.hash.includes('respond=false')) fns.sampleFunction.respond = false;
+      session.sysupdate(null, fns);
       session.prompt(`Call the sample function.`);
     };
   </script>

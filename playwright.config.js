@@ -1,7 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './test',
+  testDir: './spec',
+  workers: 4,
   use: {
     baseURL: 'http://localhost:3000',
     headless: true,
