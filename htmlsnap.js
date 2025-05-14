@@ -30,7 +30,7 @@ function htmlsnap(root, opt) {
     'role',
   ];
   opt.removeInvisible ??= opt.llm;
-  let map = opt.map?.clone?.();
+  let { map } = opt;
   let html = filterclone(root, (x, y) => {
     try {
       if (x.nodeType === Node.COMMENT_NODE) return x;
