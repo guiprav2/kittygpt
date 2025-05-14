@@ -10,40 +10,47 @@ function filterclone(root, filter, iframes) {
     for (let child = original.firstChild; child; child = child.nextSibling) {
       let cchild;
 
-      if (child.nodeType === Node.ELEMENT_NODE) {
-        cchild = child.cloneNode(false);
+      if (
+        iframes &&
+        child.nodeType === Node.ELEMENT_NODE &&
+        child.tagName === 'IFRAME' &&
+        child.src &&
+        child.src.startsWith(location.origin) &&
+        child.contentDocument &&
+        child.contentDocument.documentElement
+      ) {
+        try {
+          let div = document.createElement('div');
+          div.setAttribute('data-originaltag', 'iframe');
+          cchild = filter(div, child);
+          if (cchild) {
+            clone.appendChild(cchild);
+            let iframeBody = child.contentDocument.body;
+            let clonedBody = filterclone(iframeBody, filter, true);
+            if (clonedBody) {
+              for (let iframeChild of clonedBody.childNodes) {
+                cchild.appendChild(iframeChild.cloneNode(true));
+              }
+            }
+          }
+          continue;
+        } catch (e) {
+          console.warn('Could not access iframe content:', e);
+          cchild = filter(child.cloneNode(false), child);
+        }
       } else {
-        cchild = child.cloneNode(true);
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          cchild = child.cloneNode(false);
+        } else {
+          cchild = child.cloneNode(true);
+        }
+        cchild = filter(cchild, child);
       }
 
-      cchild = filter(cchild, child);
       if (cchild) {
         clone.appendChild(cchild);
-
         if (child.nodeType === Node.ELEMENT_NODE) {
-          if (
-            iframes &&
-            child.tagName === 'IFRAME' &&
-            child.src &&
-            child.src.startsWith(location.origin) &&
-            child.contentDocument
-          ) {
-            try {
-              let iframeDoc = child.contentDocument;
-              let clonedIframeDoc = filterclone(iframeDoc, filter, true);
-              if (clonedIframeDoc) {
-                // Clone the body of the iframe into the iframe element
-                for (let iframeChild of clonedIframeDoc.childNodes) {
-                  cchild.appendChild(iframeChild.cloneNode(true));
-                }
-              }
-            } catch (e) {
-              // Ignore cross-origin iframes or access errors
-              console.warn('Could not access iframe content:', e);
-            }
-          } else {
-            stack.push({ original: child, clone: cchild });
-          }
+          stack.push({ original: child, clone: cchild });
         }
       }
     }

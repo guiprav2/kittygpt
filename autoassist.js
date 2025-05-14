@@ -128,7 +128,7 @@ async function autoassist(opt) {
   );
   let mutobs = new MutationObserver(() => {
     let dirty = false;
-    let [newSnap, newMap] = htmlsnap(document.body, { iframes: opt.iframes, map, llm: true });
+    let [newSnap, newMap] = htmlsnap(opt.scope || document.body, { iframes: opt.iframes, idtrack: opt.idtrack, map, llm: true });
     if (snap !== newSnap) {
       dirty = true;
       snap = newSnap;
@@ -140,7 +140,7 @@ async function autoassist(opt) {
       createFns(map, { navdisable: opt.navdisable, silent: opt.silent }),
     );
   });
-  mutobs.observe(document.documentElement, {
+  mutobs.observe(opt.scope || document.documentElement, {
     attributes: true,
     childList: true,
     subtree: true,
@@ -148,6 +148,7 @@ async function autoassist(opt) {
   let ostop = session.stop;
   return {
     ...session,
+    get map() { return map },
     stop: () => {
       mutobs.disconnect();
       return ostop.call(session);

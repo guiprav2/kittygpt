@@ -1,0 +1,5 @@
+- Make sure quick example works (use npx serve).
+- Make sure kittygpt-serve example works.
+- Make sure voice examples work.
+- Make sure NodeJS example works.
+- Make sure custom server middlewares work.
