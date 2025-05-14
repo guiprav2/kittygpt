@@ -1,0 +1,17 @@
+import 'dotenv/config';
+import express from 'express';
+import midcompletion from './middleware/completion.js';
+import midvoicechat from './middleware/voicechat.js';
+import midwiki from './middleware/wiki.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+let __filename = fileURLToPath(import.meta.url);
+let __dirname = path.dirname(__filename);
+let app = express();
+let PORT = process.env.PORT || 3000;
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+app.post('/api/completion', midcompletion);
+app.use('/api/wiki', midwiki);
+app.use((req, res) => res.status(404).json({ error: 'Not found' }));
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
