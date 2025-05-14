@@ -65,31 +65,31 @@ function createFns(map, opt = {}) {
       parameters: {
         type: 'object',
         properties: {
-          kittyid: {
+          htmlsnap: {
             type: 'string',
-            description: 'The data-kittyid value of the target element',
+            description: 'The data-htmlsnap value of the target element',
           },
         },
-        required: ['kittyid'],
+        required: ['htmlsnap'],
       },
-      handler: ({ kittyid }) => map.get(kittyid).click(),
+      handler: ({ htmlsnap }) => map.get(htmlsnap).click(),
       respond: !opt.silent,
     },
     fillText: {
       parameters: {
         type: 'object',
         properties: {
-          kittyid: {
+          htmlsnap: {
             type: 'string',
             description:
-              'The data-kittyid value of the target element (select elements prohibited)',
+              'The data-htmlsnap value of the target element (select elements prohibited)',
           },
           text: { type: 'string', description: `The full text input` },
         },
-        required: ['kittyid', 'text'],
+        required: ['htmlsnap', 'text'],
       },
-      handler: async ({ kittyid, text }) =>
-        await fillInput(map.get(kittyid), text),
+      handler: async ({ htmlsnap, text }) =>
+        await fillInput(map.get(htmlsnap), text),
       respond: !opt.silent,
     },
   };

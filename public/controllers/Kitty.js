@@ -31,7 +31,7 @@ export default class Kitty {
         const keyInput = document.getElementById('user-key');
 
         startBtn.addEventListener('click', async ev => {
-          ev.target.disabled = true;
+          ev.target.closest('button').disabled = true;
           try {
             const key = keyInput.value.trim();
             /*if (!key)
@@ -55,7 +55,7 @@ export default class Kitty {
           } catch (err) {
             await showModal('Error', { msg: err.message });
           } finally {
-            ev.target.disabled = false;
+            ev.target.closest('button').disabled = false;
           }
         });
 
@@ -99,7 +99,7 @@ export default class Kitty {
             let content = '';
 
             try {
-              ev.target.disabled = true;
+              ev.target.closest('button').disabled = true;
               const res = await completion(logs, {
                 endpoint:
                   'https://kittygpt.netlify.app/.netlify/functions/completion',
@@ -120,7 +120,7 @@ export default class Kitty {
               p.lastElementChild.remove();
               await showModal('Error', { msg: err.message });
             } finally {
-              ev.target.disabled = false;
+              ev.target.closest('button').disabled = false;
             }
           });
       });
