@@ -4,7 +4,10 @@ import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
 export default class Kitty {
   state = {
     logs: [
-      { role: 'system', content: `You're KittyGPT, a helpful assistant who loves kittens and code.` },
+      {
+        role: 'system',
+        content: `You're KittyGPT, a helpful assistant who loves kittens and code.`,
+      },
     ],
   };
 
@@ -18,7 +21,8 @@ export default class Kitty {
         const stopBtn = document.getElementById('stop');
         const keyInput = document.getElementById('user-key');
 
-        startBtn.addEventListener('click', async () => {
+        startBtn.addEventListener('click', async ev => {
+          ev.target.disabled = true;
           try {
             const key = keyInput.value.trim();
             /*if (!key)
@@ -38,6 +42,8 @@ export default class Kitty {
             startBtn.classList.add('hidden');
           } catch (err) {
             await showModal('Error', { msg: err.message });
+          } finally {
+            ev.target.disabled = false;
           }
         });
 
@@ -72,6 +78,7 @@ export default class Kitty {
             userMsg.className = 'text-right text-blue-600';
             userMsg.textContent = '🧍‍♀️ ' + input;
             chatLog.appendChild(userMsg);
+            document.getElementById('playground-input').value = '';
 
             try {
               const res = await completion(logs, {
@@ -86,7 +93,6 @@ export default class Kitty {
               botMsg.textContent = '🐱 ' + res.content;
               chatLog.appendChild(botMsg);
 
-              document.getElementById('playground-input').value = '';
               chatLog.scrollTop = chatLog.scrollHeight;
             } catch (err) {
               await showModal('Error', { msg: err.message });
