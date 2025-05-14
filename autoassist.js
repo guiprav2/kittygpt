@@ -120,7 +120,7 @@ function createFns(map, opt = {}) {
 }
 
 async function autoassist(opt) {
-  let [snap, map] = htmlsnap(document.body, {
+  let [snap, map] = htmlsnap((opt.scope || document.body), {
     map: opt.map || new BiMap(),
     llm: true,
   });
