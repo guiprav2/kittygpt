@@ -120,15 +120,44 @@ function createFns(map, opt = {}) {
 }
 
 async function autoassist(opt) {
-  let [snap, map] = htmlsnap(document.body, { map: new BiMap(), llm: true });
+  let [snap, map] = htmlsnap(document.body, {
+    map: opt.map || new BiMap(),
+    llm: true,
+  });
   let session = await voicechat(opt);
   session.sysupdate(
     { html: snap },
     createFns(map, { navdisable: opt.navdisable, silent: opt.silent }),
   );
-  let mutobs = new MutationObserver(() => {
+  let frameObservers = new Map();
+  let observeFrames = () => {
+    if (!opt.iframes) return;
+    for (let frame of (opt.scope || document).querySelectorAll('iframe')) {
+      if (frameObservers.get(frame)) continue;
+      let mutobs = new MutationObserver(handleMutations);
+      let observe = () => {
+        console.log('Now observing:', frame);
+        mutobs.observe(frame.contentDocument.documentElement, {
+          attributes: true,
+          characterData: true,
+          childList: true,
+          subtree: true,
+        });
+      };
+      frame.addEventListener('load', observe);
+      observe();
+      frameObservers.set(frame, mutobs);
+    }
+  };
+  let handleMutations = () => {
+    observeFrames();
     let dirty = false;
-    let [newSnap, newMap] = htmlsnap(opt.scope || document.body, { iframes: opt.iframes, idtrack: opt.idtrack, map, llm: true });
+    let [newSnap, newMap] = htmlsnap(opt.scope || document.body, {
+      iframes: opt.iframes,
+      idtrack: opt.idtrack,
+      map,
+      llm: true,
+    });
     if (snap !== newSnap) {
       dirty = true;
       snap = newSnap;
@@ -139,17 +168,23 @@ async function autoassist(opt) {
       { html: snap },
       createFns(map, { navdisable: opt.navdisable, silent: opt.silent }),
     );
-  });
+  };
+  let mutobs = new MutationObserver(handleMutations);
   mutobs.observe(opt.scope || document.documentElement, {
     attributes: true,
+    characterData: true,
     childList: true,
     subtree: true,
   });
+  observeFrames();
   let ostop = session.stop;
   return {
     ...session,
-    get map() { return map },
+    get map() {
+      return map;
+    },
     stop: () => {
+      for (let mutobs of frameObservers.values()) mutobs.disconnect();
       mutobs.disconnect();
       return ostop.call(session);
     },
