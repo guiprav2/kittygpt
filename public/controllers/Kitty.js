@@ -1,5 +1,5 @@
-import autoassist from 'https://esm.sh/@camilaprav/kittygpt/autoassist.js';
-import completion from 'https://esm.sh/@camilaprav/kittygpt/completion.js';
+import autoassist from 'https://esm.sh/@camilaprav/kittygpt@0.0.29/autoassist.js';
+import completion from 'https://esm.sh/@camilaprav/kittygpt@0.0.29/completion.js';
 import markdownit from 'https://esm.sh/markdown-it';
 
 let md = markdownit();
