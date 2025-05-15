@@ -1,5 +1,5 @@
 import BiMap from './bimap.js';
-import htmlsnap from './htmlsnap.js';
+import htmlsnap from 'https://esm.sh/@camilaprav/htmlsnap@0.0.7';
 import voicechat from './voicechat.js';
 
 async function fillInput(inputElement, text, delay = 50) {
