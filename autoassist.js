@@ -119,8 +119,10 @@ function createFns(map, opt = {}) {
   return fns;
 }
 
-async function autoassist(opt) {
+export default async function autoassist(opt) {
   let [snap, map] = htmlsnap((opt.scope || document.body), {
+    iframes: true,
+    idtrack: opt.idtrack,
     map: opt.map || new BiMap(),
     llm: true,
   });
@@ -130,13 +132,18 @@ async function autoassist(opt) {
     createFns(map, { navdisable: opt.navdisable, silent: opt.silent }),
   );
   let frameObservers = new Map();
+  let observedRoots = new Set();
   let observeFrames = () => {
     if (!opt.iframes) return;
-    for (let frame of (opt.scope || document).querySelectorAll('iframe')) {
-      if (frameObservers.get(frame)) continue;
+    let scope = opt.scope || document;
+    let frames = [...scope.querySelectorAll('iframe')];
+    if (scope.tagName === 'IFRAME') frames.unshift(scope);
+    for (let frame of frames) {
+      let frameRoot = frame.contentDocument.documentElement;
+      if (observedRoots.has(frameRoot)) continue;
       let mutobs = new MutationObserver(handleMutations);
       let observe = () => {
-        mutobs.observe(frame.contentDocument.documentElement, {
+        mutobs.observe(frameRoot, {
           attributes: true,
           characterData: true,
           childList: true,
@@ -145,6 +152,8 @@ async function autoassist(opt) {
       };
       frame.addEventListener('load', observe);
       observe();
+      observedRoots.add(frameRoot);
+      frameObservers.get(frame)?.disconnect?.();
       frameObservers.set(frame, mutobs);
     }
   };
@@ -189,5 +198,3 @@ async function autoassist(opt) {
     },
   };
 }
-
-export default autoassist;

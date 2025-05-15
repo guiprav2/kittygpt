@@ -12,13 +12,14 @@ function visible(x, llm) {
   return rect.width > 0 && rect.height > 0;
 }
 
-function htmlsnap(root, opt) {
+export default function htmlsnap(root, opt) {
   opt.collapseWhitespace ??= false;
   opt.idtrack ??= false;
   opt.llm ??= false;
   opt.attrs ??= opt.llm && [
     /^aria-/,
     'alt',
+    'class',
     'title',
     'href',
     'src',
@@ -51,6 +52,7 @@ function htmlsnap(root, opt) {
         map.set(id, y);
       }
       (x.value || x.value === '') && x.setAttribute('value', x.value);
+      (x.src && (x.src.startsWith('data:') || x.src.length > 512)) && x.removeAttribute('src');
       return x;
     } catch (err) {
       console.error('Element error:', y, err);
@@ -58,5 +60,3 @@ function htmlsnap(root, opt) {
   }, opt.iframes)?.outerHTML || '';
   return opt.idtrack || opt.llm ? [html, map] : html;
 }
-
-export default htmlsnap;

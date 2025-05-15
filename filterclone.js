@@ -33,8 +33,7 @@ function filtercloneFrame(iframe, filter, iframes, nothrow = true) {
   return null;
 }
 
-function filterclone(root, filter, iframes, nothrow = true) {
-  // Handle iframe if root is an iframe
+export default function filterclone(root, filter, iframes, nothrow = true) {
   if (
     iframes &&
     root.nodeType === Node.ELEMENT_NODE &&
@@ -44,7 +43,6 @@ function filterclone(root, filter, iframes, nothrow = true) {
     if (iframeClone) return iframeClone;
     return null;
   }
-
   let croot;
   try {
     croot = filter(root.cloneNode(false), root);
@@ -53,17 +51,12 @@ function filterclone(root, filter, iframes, nothrow = true) {
     console.warn('Error filtering root:', err);
     return null;
   }
-
   if (!croot) return null;
-
   const stack = [{ original: root, clone: croot }];
-
   while (stack.length > 0) {
     const { original, clone } = stack.pop();
-
     for (let child = original.firstChild; child; child = child.nextSibling) {
       let cchild;
-
       if (
         iframes &&
         child.nodeType === Node.ELEMENT_NODE &&
@@ -75,7 +68,6 @@ function filterclone(root, filter, iframes, nothrow = true) {
         }
         continue;
       }
-
       try {
         if (child.nodeType === Node.ELEMENT_NODE) {
           cchild = child.cloneNode(false);
@@ -88,7 +80,6 @@ function filterclone(root, filter, iframes, nothrow = true) {
         console.warn('Error cloning child:', err);
         continue;
       }
-
       if (cchild) {
         clone.appendChild(cchild);
         if (child.nodeType === Node.ELEMENT_NODE) {
@@ -97,8 +88,5 @@ function filterclone(root, filter, iframes, nothrow = true) {
       }
     }
   }
-
   return croot;
 }
-
-export default filterclone;

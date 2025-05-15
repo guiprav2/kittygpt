@@ -309,45 +309,50 @@ export async function voicechat({
   };
 
   dc.onmessage = async event => {
-    let msg = JSON.parse(event.data);
-    events.emit(msg.type, msg);
-    if (msg.type === 'response.audio_transcript.delta') transcript?.(msg.delta);
-    if (
-      msg.type === 'response.function_call_arguments.done' &&
-      msg.name in fns
-    ) {
-      let { call_id, arguments: argsJSON } = msg;
-      try {
-        let args = JSON.parse(argsJSON);
-        let handler = fns[msg.name].handler;
-        let result = await Promise.resolve(handler(args));
-        let respond = (result?.respond === undefined ? fns[msg.name].respond : result.respond) ?? true;
-        if (result) delete result.respond;
-        dc.send(
-          JSON.stringify({
-            type: 'conversation.item.create',
-            item: {
-              type: 'function_call_output',
-              call_id,
-              output: JSON.stringify(result ?? { success: true }),
-            },
-          }),
-        );
-        respond && dc.send(JSON.stringify({ type: 'response.create' }));
-      } catch (e) {
-        dc.send(
-          JSON.stringify({
-            type: 'conversation.item.create',
-            item: {
-              type: 'function_call_output',
-              call_id,
-              output: JSON.stringify({ success: false, error: e.message }),
-            },
-          }),
-        );
-        dc.send(JSON.stringify({ type: 'response.create' }));
-        console.error(e);
+    try {
+      let msg = JSON.parse(event.data);
+      events.emit(msg.type, msg);
+      if (msg.type === 'response.audio_transcript.delta') transcript?.(msg.delta);
+      if (
+        msg.type === 'response.function_call_arguments.done' &&
+        msg.name in fns
+      ) {
+        let { call_id, arguments: argsJSON } = msg;
+        try {
+          let args = JSON.parse(argsJSON);
+          let handler = fns[msg.name].handler;
+          let result = await Promise.resolve(handler(args));
+          let respond = (result?.respond === undefined ? fns[msg.name].respond : result.respond) ?? true;
+          if (result) delete result.respond;
+          dc.send(
+            JSON.stringify({
+              type: 'conversation.item.create',
+              item: {
+                type: 'function_call_output',
+                call_id,
+                output: JSON.stringify(result ?? { success: true }),
+              },
+            }),
+          );
+          respond && dc.send(JSON.stringify({ type: 'response.create' }));
+        } catch (e) {
+          dc.send(
+            JSON.stringify({
+              type: 'conversation.item.create',
+              item: {
+                type: 'function_call_output',
+                call_id,
+                output: JSON.stringify({ success: false, error: e.message }),
+              },
+            }),
+          );
+          dc.send(JSON.stringify({ type: 'response.create' }));
+          console.error(e);
+        }
       }
+    } catch (err) {
+      console.error(err);
+      console.error('Payload:', event.data);
     }
   };
 
