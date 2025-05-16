@@ -108,7 +108,7 @@ async function completion(logs, opt = {}) {
 }
 
 completion.defaultEndpoint = '/completion';
-completion.defaultModel = 'gpt-4o';
+completion.defaultModel = 'gpt-4.1';
 
 completion.defaultLogger = logs => {
   let last = logs.at(-1);
