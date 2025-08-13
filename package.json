@@ -17,7 +17,8 @@
   "dependencies": {
     "mic": "^2.1.2",
     "speaker": "^0.5.5",
-    "wrtc": "^0.4.7"
+    "wrtc": "^0.4.7",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
