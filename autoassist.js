@@ -132,7 +132,7 @@ export default async function autoassist(opt) {
   );
   let frameObservers = new Map();
   let ptsHeld = false;
-  let ptsAttachHandlers = doc => {
+  let ptsAttachHandlers = win => {
     let keydown = ev => {
       let key = ev.key;
       if (ev.altKey) key = `Alt-${key}`;
@@ -147,9 +147,9 @@ export default async function autoassist(opt) {
       if (key === 'Control') key = 'Ctrl';
       if (key === opt.pushToSpeak && ptsHeld) { ev.preventDefault(); ptsHeld = false; session.pauseListening() }
     };
-    doc.addEventListener('keydown', keydown);
-    doc.addEventListener('keyup', keyup);
-    return () => { doc.removeEventListener('keydown', keydown); doc.removeEventListener('keyup', keyup) };
+    win.addEventListener('keydown', keydown);
+    win.addEventListener('keyup', keyup);
+    return () => { win.removeEventListener('keydown', keydown); win.removeEventListener('keyup', keyup) };
   };
   let ptsDetachHandlers = [];
   let observedRoots = new Set();
@@ -175,7 +175,7 @@ export default async function autoassist(opt) {
       observedRoots.add(frameRoot);
       frameObservers.get(frame)?.disconnect?.();
       frameObservers.set(frame, mutobs);
-      opt.pushToSpeak && ptsDetachHandlers.push(ptsAttachHandlers(frame.contentDocument));
+      opt.pushToSpeak && ptsDetachHandlers.push(ptsAttachHandlers(frame.contentWindow));
     }
   };
   let handleMutations = () => {
@@ -207,7 +207,7 @@ export default async function autoassist(opt) {
   });
   observeFrames();
   if (opt.pushToSpeak) {
-    ptsDetachHandlers.push(ptsAttachHandlers(document));
+    ptsDetachHandlers.push(ptsAttachHandlers(window));
     let originalStop = session.stop;
     session.stop = () => { ptsDetachHandlers.forEach(x => x()); return originalStop.call(session) };
     session.pauseListening();
