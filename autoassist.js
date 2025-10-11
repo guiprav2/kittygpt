@@ -14,9 +14,8 @@ async function fillInput(inputElement, text, delay = 50) {
   inputElement.dispatchEvent(new Event('change', { bubbles: true }));
 
   // Step 2: Use proper Unicode-aware iteration
-  const graphemes = Array.from(text); // handles emojis, accents, etc.
-
-  for (const char of graphemes) {
+  let graphemes = Array.from(text);
+  for (let char of graphemes) {
     await new Promise(resolve => setTimeout(resolve, delay));
 
     // Fire keydown
@@ -185,6 +184,31 @@ export default async function autoassist(opt) {
     subtree: true,
   });
   observeFrames();
+  if (opt.pushToSpeak) {
+    let keyHeld = false;
+    addEventListener('keydown', ev => {
+      let key = ev.key;
+      if (ev.altKey) key = `Alt-${key}`;
+      if (ev.ctrlKey) key = `Ctrl-${key}`;
+      if (key === 'Control') key = 'Ctrl';
+      if (key === opt.pushToSpeak && !keyHeld) { keyHeld = true; session.mic?.mute?.(false) });
+    addEventListener('keyup', ev => {
+      let key = ev.key;
+      if (ev.altKey) key = `Alt-${key}`;
+      if (ev.ctrlKey) key = `Ctrl-${key}`;
+      if (key === 'Control') key = 'Ctrl';
+      if (key === opt.pushToSpeak && keyHeld) { keyHeld = false; session.mic?.mute?.(true) }
+    });
+    let originalStop = session.stop;
+    session.stop = () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      for (let m of frameObservers.values()) m.disconnect();
+      mutobs.disconnect();
+      return originalStop.call(session);
+    };
+    session.mic?.mute?.(true);
+  }
   let ostop = session.stop;
   return {
     ...session,
