@@ -131,6 +131,27 @@ export default async function autoassist(opt) {
     createFns(map, { navdisable: opt.navdisable, silent: opt.silent }),
   );
   let frameObservers = new Map();
+  let ptsHeld = false;
+  let ptsAttachHandlers = doc => {
+    let keydown = ev => {
+      let key = ev.key;
+      if (ev.altKey) key = `Alt-${key}`;
+      if (ev.ctrlKey) key = `Ctrl-${key}`;
+      if (key === 'Control') key = 'Ctrl';
+      if (key === opt.pushToSpeak && !ptsHeld) { ev.preventDefault(); ptsHeld = true; session.resumeListening() }
+    };
+    let keyup = ev => {
+      let key = ev.key;
+      if (ev.altKey) key = `Alt-${key}`;
+      if (ev.ctrlKey) key = `Ctrl-${key}`;
+      if (key === 'Control') key = 'Ctrl';
+      if (key === opt.pushToSpeak && ptsHeld) { ev.preventDefault(); ptsHeld = false; session.pauseListening() }
+    };
+    doc.addEventListener('keydown', keydown);
+    doc.addEventListener('keyup', keyup);
+    return () => { doc.removeEventListener('keydown', keydown); doc.removeEventListener('keyup', keyup) };
+  };
+  let ptsDetachHandlers = [];
   let observedRoots = new Set();
   let observeFrames = () => {
     if (!opt.iframes) return;
@@ -154,6 +175,7 @@ export default async function autoassist(opt) {
       observedRoots.add(frameRoot);
       frameObservers.get(frame)?.disconnect?.();
       frameObservers.set(frame, mutobs);
+      opt.pushToSpeak && ptsDetachHandlers.push(ptsAttachHandlers(frame.contentDocument));
     }
   };
   let handleMutations = () => {
@@ -185,29 +207,9 @@ export default async function autoassist(opt) {
   });
   observeFrames();
   if (opt.pushToSpeak) {
-    let keyHeld = false;
-    let keydown = ev => {
-      let key = ev.key;
-      if (ev.altKey) key = `Alt-${key}`;
-      if (ev.ctrlKey) key = `Ctrl-${key}`;
-      if (key === 'Control') key = 'Ctrl';
-      if (key === opt.pushToSpeak && !keyHeld) { ev.preventDefault(); keyHeld = true; session.resumeListening(); console.log('unmute') }
-    };
-    let keyup = ev => {
-      let key = ev.key;
-      if (ev.altKey) key = `Alt-${key}`;
-      if (ev.ctrlKey) key = `Ctrl-${key}`;
-      if (key === 'Control') key = 'Ctrl';
-      if (key === opt.pushToSpeak && keyHeld) { ev.preventDefault(); keyHeld = false; session.pauseListening(); console.log('mute') }
-    };
-    addEventListener('keydown', keydown);
-    addEventListener('keyup', keyup);
+    ptsDetachHandlers.push(ptsAttachHandlers(document));
     let originalStop = session.stop;
-    session.stop = () => {
-      window.removeEventListener('keydown', keydown);
-      window.removeEventListener('keyup', keyup);
-      return originalStop.call(session);
-    };
+    session.stop = () => { ptsDetachHandlers.forEach(x => x()); return originalStop.call(session) };
     session.pauseListening();
     console.log('mute');
   }
