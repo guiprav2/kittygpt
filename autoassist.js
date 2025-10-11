@@ -192,6 +192,7 @@ export default async function autoassist(opt) {
       if (ev.ctrlKey) key = `Ctrl-${key}`;
       if (key === 'Control') key = 'Ctrl';
       if (key === opt.pushToSpeak && !keyHeld) { ev.preventDefault(); keyHeld = true; session.mic?.mute?.(false) });
+    });
     addEventListener('keyup', ev => {
       let key = ev.key;
       if (ev.altKey) key = `Alt-${key}`;
