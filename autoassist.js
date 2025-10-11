@@ -191,14 +191,14 @@ export default async function autoassist(opt) {
       if (ev.altKey) key = `Alt-${key}`;
       if (ev.ctrlKey) key = `Ctrl-${key}`;
       if (key === 'Control') key = 'Ctrl';
-      if (key === opt.pushToSpeak && !keyHeld) { ev.preventDefault(); keyHeld = true; session.resumeListening() }
+      if (key === opt.pushToSpeak && !keyHeld) { ev.preventDefault(); keyHeld = true; session.resumeListening(); console.log('unmute') }
     };
     let keyup = ev => {
       let key = ev.key;
       if (ev.altKey) key = `Alt-${key}`;
       if (ev.ctrlKey) key = `Ctrl-${key}`;
       if (key === 'Control') key = 'Ctrl';
-      if (key === opt.pushToSpeak && keyHeld) { ev.preventDefault(); keyHeld = false; session.pauseListening() }
+      if (key === opt.pushToSpeak && keyHeld) { ev.preventDefault(); keyHeld = false; session.pauseListening(); console.log('mute') }
     };
     addEventListener('keydown', keydown);
     addEventListener('keyup', keyup);
@@ -206,11 +206,10 @@ export default async function autoassist(opt) {
     session.stop = () => {
       window.removeEventListener('keydown', keydown);
       window.removeEventListener('keyup', keyup);
-      for (let m of frameObservers.values()) m.disconnect();
-      mutobs.disconnect();
       return originalStop.call(session);
     };
     session.pauseListening();
+    console.log('mute');
   }
   let ostop = session.stop;
   return {
