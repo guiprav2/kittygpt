@@ -186,24 +186,26 @@ export default async function autoassist(opt) {
   observeFrames();
   if (opt.pushToSpeak) {
     let keyHeld = false;
-    addEventListener('keydown', ev => {
+    let keydown = ev => {
       let key = ev.key;
       if (ev.altKey) key = `Alt-${key}`;
       if (ev.ctrlKey) key = `Ctrl-${key}`;
       if (key === 'Control') key = 'Ctrl';
       if (key === opt.pushToSpeak && !keyHeld) { ev.preventDefault(); keyHeld = true; session.mic?.mute?.(false) }
-    });
-    addEventListener('keyup', ev => {
+    };
+    let keyup = ev => {
       let key = ev.key;
       if (ev.altKey) key = `Alt-${key}`;
       if (ev.ctrlKey) key = `Ctrl-${key}`;
       if (key === 'Control') key = 'Ctrl';
       if (key === opt.pushToSpeak && keyHeld) { ev.preventDefault(); keyHeld = false; session.mic?.mute?.(true) }
-    });
+    };
+    addEventListener('keydown', keydown);
+    addEventListener('keyup', keyup);
     let originalStop = session.stop;
     session.stop = () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', keydown);
+      window.removeEventListener('keyup', keyup);
       for (let m of frameObservers.values()) m.disconnect();
       mutobs.disconnect();
       return originalStop.call(session);
