@@ -135,21 +135,21 @@ export default async function autoassist(opt) {
   let ptsAttachHandlers = win => {
     let keydown = ev => {
       let key = ev.key;
-      if (ev.altKey) key = `Alt-${key}`;
-      if (ev.ctrlKey) key = `Ctrl-${key}`;
+      if (ev.altKey && ev.key !== 'Alt') key = `Alt-${key}`;
+      if (ev.ctrlKey && ev.key !== 'Control') key = `Ctrl-${key}`;
       if (key === 'Control') key = 'Ctrl';
-      if (key === opt.pushToSpeak && !ptsHeld) { ev.preventDefault(); ptsHeld = true; session.resumeListening() }
+      if (key === opt.pushToSpeak && !ptsHeld) { ev.preventDefault(); ptsHeld = true; session.resumeListening(); console.log('unmute') }
     };
     let keyup = ev => {
       let key = ev.key;
-      if (ev.altKey) key = `Alt-${key}`;
-      if (ev.ctrlKey) key = `Ctrl-${key}`;
+      if (ev.altKey && ev.key !== 'Alt') key = `Alt-${key}`;
+      if (ev.ctrlKey && ev.key !== 'Control') key = `Ctrl-${key}`;
       if (key === 'Control') key = 'Ctrl';
-      if (key === opt.pushToSpeak && ptsHeld) { ev.preventDefault(); ptsHeld = false; session.pauseListening() }
+      if (key === opt.pushToSpeak && ptsHeld) { ev.preventDefault(); ptsHeld = false; session.pauseListening(); console.log('mute') }
     };
-    win.addEventListener('keydown', keydown);
-    win.addEventListener('keyup', keyup);
-    return () => { win.removeEventListener('keydown', keydown); win.removeEventListener('keyup', keyup) };
+    win.addEventListener('keydown', keydown, true);
+    win.addEventListener('keyup', keyup, true);
+    return () => { win.removeEventListener('keydown', keydown, true); win.removeEventListener('keyup', keyup, true) };
   };
   let ptsDetachHandlers = [];
   let observedRoots = new Set();
@@ -170,7 +170,10 @@ export default async function autoassist(opt) {
           subtree: true,
         });
       };
-      frame.addEventListener('load', observe);
+      frame.addEventListener('load', ev => {
+        opt.pushToSpeak && ptsDetachHandlers.push(ptsAttachHandlers(frame.contentWindow));
+        observe(ev);
+      });
       observe();
       observedRoots.add(frameRoot);
       frameObservers.get(frame)?.disconnect?.();
