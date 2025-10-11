@@ -373,7 +373,24 @@ export async function voicechat({
 
   debug && console.log('✅ Voice session started');
 
-  return { events, stop, sysupdate, prompt };
+  let micTrack = null;
+  try {
+    micTrack = pc.getSenders().find(s => s.track?.kind === 'audio')?.track || null;
+  } catch {}
+  const pauseListening = () => {
+    try {
+      micTrack ??= pc.getSenders().find(s => s.track?.kind === 'audio')?.track;
+      if (micTrack) micTrack.enabled = false;
+    } catch {}
+  };
+  const resumeListening = () => {
+    try {
+      micTrack ??= pc.getSenders().find(s => s.track?.kind === 'audio')?.track;
+      if (micTrack) micTrack.enabled = true;
+    } catch {}
+  };
+
+  return { events, stop, sysupdate, pauseListening, resumeListening, prompt };
 }
 
 voicechat.defaultEndpoint = '/voicechat';

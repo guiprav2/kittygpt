@@ -191,14 +191,14 @@ export default async function autoassist(opt) {
       if (ev.altKey) key = `Alt-${key}`;
       if (ev.ctrlKey) key = `Ctrl-${key}`;
       if (key === 'Control') key = 'Ctrl';
-      if (key === opt.pushToSpeak && !keyHeld) { ev.preventDefault(); keyHeld = true; session.mic?.mute?.(false) }
+      if (key === opt.pushToSpeak && !keyHeld) { ev.preventDefault(); keyHeld = true; session.resumeListening() }
     };
     let keyup = ev => {
       let key = ev.key;
       if (ev.altKey) key = `Alt-${key}`;
       if (ev.ctrlKey) key = `Ctrl-${key}`;
       if (key === 'Control') key = 'Ctrl';
-      if (key === opt.pushToSpeak && keyHeld) { ev.preventDefault(); keyHeld = false; session.mic?.mute?.(true) }
+      if (key === opt.pushToSpeak && keyHeld) { ev.preventDefault(); keyHeld = false; session.pauseListening() }
     };
     addEventListener('keydown', keydown);
     addEventListener('keyup', keyup);
@@ -210,7 +210,7 @@ export default async function autoassist(opt) {
       mutobs.disconnect();
       return originalStop.call(session);
     };
-    session.mic?.mute?.(true);
+    session.pauseListening();
   }
   let ostop = session.stop;
   return {
