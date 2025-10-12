@@ -1,5 +1,5 @@
 import BiMap from './bimap.js';
-import htmlsnap from 'https://esm.sh/@camilaprav/htmlsnap@0.0.9';
+import htmlsnap from 'https://esm.sh/@camilaprav/htmlsnap@0.0.14';
 import voicechat from './voicechat.js';
 
 async function fillInput(inputElement, text, delay = 50) {
@@ -119,10 +119,11 @@ function createFns(map, opt = {}) {
 }
 
 export default async function autoassist(opt) {
+  let ownMap = new BiMap();
   let [snap, map] = htmlsnap((opt.scope || document.body), {
     iframes: true,
     idtrack: opt.idtrack,
-    map: opt.map || new BiMap(),
+    map: () => resolve(opt.map) || ownMap,
     llm: true,
   });
   let session = await voicechat(opt);
@@ -187,7 +188,7 @@ export default async function autoassist(opt) {
     let [newSnap, newMap] = htmlsnap(opt.scope || document.body, {
       iframes: opt.iframes,
       idtrack: opt.idtrack,
-      map,
+      map: () => resolve(opt.map) || map,
       llm: true,
     });
     if (snap !== newSnap) {
@@ -229,3 +230,5 @@ export default async function autoassist(opt) {
     },
   };
 }
+
+function resolve(x) { return typeof x === 'function' ? x() : x }
