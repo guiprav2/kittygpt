@@ -124,7 +124,8 @@ export default async function autoassist(opt) {
     iframes: true,
     idtrack: opt.idtrack,
     map: () => resolve(opt.map) || ownMap,
-    llm: true,
+    llm: opt.llm ?? true,
+    removeInvisible: opt.removeInvisible,
   });
   let session = await voicechat(opt);
   session.sysupdate(
