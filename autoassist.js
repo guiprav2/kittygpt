@@ -1,5 +1,5 @@
 import BiMap from './bimap.js';
-import htmlsnap from 'https://esm.sh/@camilaprav/htmlsnap@0.0.14';
+import htmlsnap from 'https://esm.sh/@camilaprav/htmlsnap@0.0.16';
 import voicechat from './voicechat.js';
 
 async function fillInput(inputElement, text, delay = 50) {
@@ -120,7 +120,7 @@ function createFns(map, opt = {}) {
 
 export default async function autoassist(opt) {
   let ownMap = new BiMap();
-  let [snap, map] = htmlsnap((opt.scope || document.body), {
+  let [snap, map] = htmlsnap(opt.scope || document.body, {
     iframes: true,
     idtrack: opt.idtrack,
     map: () => resolve(opt.map) || ownMap,
@@ -190,7 +190,8 @@ export default async function autoassist(opt) {
       iframes: opt.iframes,
       idtrack: opt.idtrack,
       map: () => resolve(opt.map) || map,
-      llm: true,
+      llm: opt.llm ?? true,
+      removeInvisible: opt.removeInvisible,
     });
     if (snap !== newSnap) {
       dirty = true;
