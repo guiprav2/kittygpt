@@ -1,6 +1,6 @@
-import anime from 'https://cdn.skypack.dev/animejs@3.2.2';
+import anime from 'https://esm.sh/animejs@3.2.2';
 import d from './dominant.js';
-import { camelCase } from 'https://cdn.skypack.dev/case-anything';
+import { camelCase } from 'https://esm.sh/case-anything';
 import { marked } from 'https://esm.sh/marked@13.0.1';
 
 window.anime = anime;
@@ -40,41 +40,61 @@ window.rawctrls = Object.fromEntries(
 );
 
 let components = Object.fromEntries(
-  (
-    await Promise.all(
-      Object.entries(templates).map(async ([k, v]) =>
-        k.startsWith('components/')
-          ? [
-              [
-                k.replace('.html', '.js'),
-                scripts.includes(k.replace('.html', '.js'))
-                  ? (await import('../' + k.replace('.html', '.js'))).default
-                  : class GenericComponent {
-                      constructor(props) {
-                        this.props = props;
-                      }
-                    },
-              ],
-            ]
-          : [],
-      ),
-    )
-  ).flat(),
+  await Promise.all(
+    scripts
+      .filter(x => x.startsWith('components/') && x.endsWith('.js'))
+      .map(async x => [x, (await import('../' + x)).default]),
+  ),
 );
 
-window.renderTemplate = x => {
+let componentTemplateCache = {};
+
+function getComponentMarkup(name) {
+  if (!componentTemplateCache[name]) {
+    let foundMarkup = null;
+    for (let [path, html] of Object.entries(templates)) {
+      if (!path.startsWith('components/')) {
+        continue;
+      }
+      let doc = new DOMParser().parseFromString(html, 'text/html');
+      let element = doc.getElementById(name);
+      if (!element) {
+        continue;
+      }
+      foundMarkup = element.outerHTML;
+      break;
+    }
+    if (!foundMarkup) {
+      throw new Error(`Component template not found for ${name}`);
+    }
+    componentTemplateCache[name] = foundMarkup;
+  }
+  return componentTemplateCache[name];
+}
+
+window.renderTemplate = (x, component) => {
   let templ = templates[x];
   let templDoc = new DOMParser().parseFromString(templ, 'text/html');
   let templRoot = document.createElement('div');
-  templRoot.innerHTML = templDoc.body.innerHTML;
+  templRoot.innerHTML = component ? templDoc.body.innerHTML : templDoc.body.firstElementChild.innerHTML;
   return compile(templRoot.firstElementChild);
 };
 
-window.renderComponent = (x, props = {}) => {
-  x = `components/${x}.html`;
-  let Component = components[x.replace('.html', '.js')];
+window.renderComponent = (name, props = {}) => {
+  let scriptKey = `components/${name}.js`;
+  let Component = components[scriptKey];
+  if (!Component) {
+    Component = components[scriptKey] = class GenericComponent {
+      constructor(componentProps) {
+        this.props = componentProps;
+      }
+    };
+  }
+  let markup = getComponentMarkup(name);
   Component.prototype.render = function () {
-    this.root = renderTemplate(x);
+    let wrapper = document.createElement('div');
+    wrapper.innerHTML = markup;
+    this.root = compile(wrapper.firstElementChild);
     this.root.ctx ??= {};
     this.root.ctx.this = this;
     return this.root;
@@ -103,7 +123,7 @@ function wfevalLoop(n, x) {
 window.arrayify = x => (Array.isArray(x) ? x : x == null ? [] : [x]);
 
 window.showModal = async (x, props) => {
-  let dialog = renderComponent(x, props);
+  let dialog = d.el('dialog', { class: 'outline-none bg-transparent' }, renderComponent(x, props));
   dialog.open = false;
   let { promise: p, resolve: res } = Promise.withResolvers();
   document.body.append(dialog);
@@ -188,10 +208,10 @@ class App {
       }
       let templDoc = new DOMParser().parseFromString(templ, 'text/html');
       let templRoot = document.createElement('div');
-      for (let x of templDoc.body.attributes) {
+      for (let x of templDoc.body.firstElementChild.attributes) {
         templRoot.setAttribute(x.name, x.value);
       }
-      templRoot.innerHTML = templDoc.body.innerHTML;
+      templRoot.innerHTML = templDoc.body.firstElementChild.innerHTML;
       this.content = compile(templRoot);
       for (let x of document.querySelectorAll('dialog')) {
         x.remove();
@@ -260,14 +280,14 @@ class App {
     }
     let templDoc = new DOMParser().parseFromString(templ, 'text/html');
     let templRoot = document.createElement('div');
-    for (let x of templDoc.body.attributes) {
+    for (let x of templDoc.body.firstElementChild.attributes) {
       templRoot.setAttribute(x.name, x.value);
     }
-    templRoot.innerHTML = templDoc.body.innerHTML;
+    templRoot.innerHTML = templDoc.body.firstElementChild.innerHTML;
     this.content = compile(templRoot);
-    let title = templDoc.querySelector('head > title');
+    let title = templDoc.querySelector('head > title')?.textContent;
     if (title) {
-      document.querySelector('head > title').textContent = title.textContent;
+      document.querySelector('head > title').textContent = title;
     }
     for (let x of document.querySelectorAll('dialog')) {
       x.remove();
@@ -418,18 +438,6 @@ function compile(root) {
       }
     }
 
-    if (/^{{.*?}}$/.test(x.getAttribute('value'))) {
-      let expr = x.value.slice(2, -2).trim();
-      x.value = '';
-      x.removeAttribute('value');
-      d.el(x, {
-        value: d.binding({
-          get: () => wfeval(x, expr || 'null'),
-          set: y => wfeval(x, expr ? `${expr} = ${JSON.stringify(y)}` : 'null'),
-        }),
-      });
-    }
-
     if (x.getAttribute('wf-value')) {
       let expr = x.getAttribute('wf-value');
       x.removeAttribute('wf-value');
@@ -472,6 +480,13 @@ function compile(root) {
       d.el(x, { src: () => wfeval(x, expr) });
     }
 
+    if (x.getAttribute('wf-alt')) {
+      let expr = x.getAttribute('wf-alt');
+      x.removeAttribute('wf-alt');
+      x.removeAttribute('alt');
+      d.el(x, { alt: () => wfeval(x, expr) });
+    }
+
     if (x.getAttribute?.('src')?.startsWith?.('../')) {
       x.src = x.getAttribute('src').slice(3);
     }
@@ -484,8 +499,9 @@ function compile(root) {
       x.style.backgroundImage = `url("${url.slice(3)}")`;
     }
 
-    if (/^{{.+?}}$/.test(x.getAttribute('href') || '')) {
-      let expr = x.getAttribute('href').slice(2, -2);
+    if (x.getAttribute('wf-href')) {
+      let expr = x.getAttribute('wf-href');
+      x.removeAttribute('wf-href');
       x.removeAttribute('href');
       d.el(x, { href: () => wfeval(x, expr) });
     }
@@ -541,55 +557,5 @@ function compile(root) {
 
   return root;
 }
-
-let observer = new MutationObserver(muts => {
-  let gfonts = [];
-  for (let mut of muts) {
-    if (mut.type === 'childList') {
-      for (let x of mut.addedNodes) {
-        if (x.nodeType !== 1) {
-          continue;
-        }
-        for (let y of [x, ...x.querySelectorAll('*')]) {
-          gfonts.push(
-            ...[...y.classList]
-              .filter(x => x.match(/^gfont-\[.+?\]$/))
-              .map(x => x.slice('gfont-['.length, -1)),
-          );
-        }
-      }
-    } else if (mut.type === 'attributes') {
-      gfonts.push(
-        ...[...mut.target.classList]
-          .filter(x => x.match(/^gfont-\[.+?\]$/))
-          .map(x => x.slice('gfont-['.length, -1)),
-      );
-    }
-  }
-
-  for (let x of gfonts) {
-    let id = `gfont-[${x}]`;
-    let existing = document.getElementById(id);
-    if (existing) {
-      continue;
-    }
-    document.head.append(
-      d.el(
-        'style',
-        { id },
-        `
-      @import url('https://fonts.googleapis.com/css2?family=${x.replace(/_/g, '+')}:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
-      .gfont-\\[${x}\\] { font-family: "${x.replace(/_/g, ' ')}" }
-    `,
-      ),
-    );
-  }
-});
-
-observer.observe(document.body, {
-  attributes: true,
-  childList: true,
-  subtree: true,
-});
 
 export default App;
