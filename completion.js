@@ -1,3 +1,34 @@
+import { lookup as mimeLookup } from 'mrmime';
+
+function automedia(x) {
+  if (!Array.isArray(x.content)) return x;
+
+  let media = [];
+
+  for (let part of x.content) {
+    if (typeof part !== 'string') continue;
+
+    let urls = part.match(/\bhttps?:\/\/[^\s<>"']+/gi);
+    if (!urls) continue;
+
+    for (let url of urls) {
+      let mime = mimeLookup(url);
+      if (!mime) continue;
+
+      if (mime.startsWith('image/')) {
+        media.push({ type: 'img', url });
+      } else if (mime.startsWith('audio/')) {
+        media.push({ type: 'audio', url });
+      } else if (mime.startsWith('video/')) {
+        media.push({ type: 'video', url });
+      }
+    }
+  }
+
+  if (!media.length) return x;
+  return { ...x, content: [...x.content, ...media] };
+}
+
 let providers = {
   //
   // ============================================================
@@ -25,7 +56,7 @@ let providers = {
             type: 'function_call',
             name: tc.name,
             arguments: JSON.stringify(tc.args),
-            call_id: tc.id
+            call_id: tc.call,
           };
         }
 
@@ -82,8 +113,8 @@ let providers = {
           return {
             type: 'tool_call',
             calls: [{
-              id: x.call_id,
               name: x.name,
+              call: x.call_id,
               args: JSON.parse(x.arguments)
             }]
           };
@@ -151,7 +182,6 @@ let providers = {
           return {
             role: 'assistant',
             tool_calls: x.calls.map(tc => ({
-              id: tc.id ?? crypto.randomUUID(),
               type: 'function',
               function: {
                 name: tc.name,
@@ -324,6 +354,7 @@ async function bodystream(body, { text, reasoning, tool, img, audio }) {
   let reader = body.getReader();
   let decoder = new TextDecoder('utf-8');
   let buffer = '';
+  let pendingCalls = {};
 
   while (true) {
     let { value, done } = await reader.read();
@@ -345,17 +376,27 @@ async function bodystream(body, { text, reasoning, tool, img, audio }) {
       let { type } = payload;
 
       if (type === "response.output_text.delta")
-        text?.('delta', payload.delta.text);
+        text?.('delta', payload.delta);
 
       else if (type === "response.output_text.done")
         text?.('done', payload.text);
 
-      else if (type === "response.tool_call.done")
-        tool?.('done', {
-          call: payload.id,
-          name: payload.name,
-          args: typeof payload.args === 'string' ? JSON.parse(payload.args) : payload.args
-        });
+      else if (type === "response.output_item.added") {
+        if (payload.item?.type === "function_call") {
+          pendingCalls[payload.item.id] = {
+            type: 'function_call',
+            name: payload.item.name,
+            call_id: payload.item.call_id,
+          };
+        }
+      }
+
+      else if (type === "response.function_call_arguments.done") {
+        const call = pendingCalls[payload.item_id];
+        call.arguments = payload.arguments;
+        await tool?.("done", call);
+        delete pendingCalls[payload.item_id];
+      }
 
       else if (type === "response.output_image.done")
         img?.('done', payload.image);
@@ -367,7 +408,7 @@ async function bodystream(body, { text, reasoning, tool, img, audio }) {
         audio?.('done', payload.audio);
 
       else if (type === "response.output_text.reasoning.delta")
-        reasoning?.('delta', payload.delta.text);
+        reasoning?.('delta', payload.delta);
 
       else if (type === "response.output_text.reasoning.done")
         reasoning?.('done', payload.text);
@@ -402,7 +443,6 @@ async function bodystreaml(body, cb) {
   }
   return finalMessage;
 }
-
 //
 // ============================================================
 // Main completion() with multi-call support
@@ -415,36 +455,61 @@ async function completion(logs, opt = {}) {
   let provMod = providers[prov];
   if (!provMod) throw new Error(`Unknown provider: ${prov}`);
 
-  const toolResults = [];
+  let toolResults = [];
+  let signal = opt.signal;
 
-  // Apply role mapping (in-place safe)
-  let baseMsgs = logs
-    .map(x =>
-      x.type !== 'message' || !opt.rolemap
-        ? x
-        : ({ ...x, role: opt.rolemap[x.role] })
-    )
-    .filter(x => x.type !== 'message' || x.role);
+  // ---------------------------------------------
+  // Abort helper (CRITICAL SEMANTICS)
+  // ---------------------------------------------
+  function checkAbort() {
+    if (!signal?.aborted) return;
+    if (signal.reason != null) {
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new Error(String(signal.reason));
+    }
+    return true; // soft abort
+  }
 
-  // Provider-formatted messages
-  let msgs = baseMsgs.map(m => provMod.fmt(m));
+  for (let [i, x] of logs.entries()) {
+    if (x.type) continue;
+    !Array.isArray(x.content) && (x.content = [x.content]);
+    logs[i] = { type: 'message', ...x };
+  }
 
-  //
-  // ============================================================
-  // OPENAI RESPONSES API (oai)
-  // ============================================================
-  //
+  // ---------------------------------------------
+  // Automedia expansion (mutates logs)
+  // ---------------------------------------------
+  if (opt.automedia) {
+    for (let i = 0; i < logs.length; i++) {
+      let msg = logs[i];
+      if (msg.role !== 'user') continue;
+      let expanded = automedia(msg);
+      if (expanded !== msg) { logs[i] = expanded }
+    }
+  }
+
+  // Provider-formatted message buffer
+  let msgs = logs.map(m => provMod.fmt(m));
+
+  // ---------------------------------------------
+  // OPENAI RESPONSES API
+  // ---------------------------------------------
   if (prov === 'oai') {
     let key = opt.key || providers.oai.key;
 
     let toolChoice =
-      !opt.call || /^auto|required|none$/.test(opt.call)
+      !opt.call || /^(auto|required|none)$/.test(opt.call)
         ? (opt.call || 'auto')
         : { type: 'function', name: opt.call };
 
     while (true) {
-      let toolsObj = typeof opt.tools === 'function' ? opt.tools() : opt.tools;
-      let ctools = Object.entries(toolsObj || {}).map(([name, spec]) => ({
+      if (checkAbort()) return [logs, ...toolResults];
+
+      // Build tool list dynamically
+      let toolDefs = Object.entries(
+        typeof opt.tools === 'function' ? opt.tools() : opt.tools || {}
+      ).map(([name, spec]) => ({
         type: 'function',
         name,
         parameters: {},
@@ -452,248 +517,298 @@ async function completion(logs, opt = {}) {
         handler: undefined
       }));
 
+      // Meta-null tool support
+      if (opt.metanull) {
+        toolDefs.push({
+          type: 'function',
+          name: 'define_tool',
+          description: 'Define a new meta tool',
+          parameters: {
+            type: 'object',
+            properties: {
+              tool_name: { type: 'string' },
+              tool_description: { type: 'string' },
+              parameters_schema: {
+                type: 'object',
+                description: `Mandatory. Must follow OpenAI's/xAI's tool parameters schema strictly.`,
+                properties: {},
+                additionalProperties: true,
+              }
+            },
+            required: ['tool_name', 'tool_description', 'parameters_schema']
+          },
+        });
+      }
+
       let payload = {
         model: cmodel,
         input: msgs,
         instructions: opt.instructions,
-        tools: ctools.length ? ctools : undefined,
-        tool_choice: ctools.length ? toolChoice : undefined,
+        tools: toolDefs.length ? toolDefs.map(t => ({ ...t, handler: undefined })) : undefined,
+        tool_choice: toolDefs.length ? toolChoice : undefined,
         parallel_tool_calls: false,
-        reasoning: opt.reasoning && { ...opt.reasoning, callback: undefined },
-        include: opt.reasoning && ['reasoning.encrypted_content'],
         store: false,
-        prompt_cache_key: opt.cid
+        stream: opt.stream ?? true,
       };
 
       let headers = { 'Content-Type': 'application/json' };
-      if (key) headers.Authorization = `Bearer ${key}`;
-      if (opt.reasoning) {
-        headers['OpenAI-Beta'] = 'responses=experimental';
-        headers.conversation_id = opt.cid;
-        headers.session_id = opt.cid;
-      }
+      key && (headers['Authorization'] = `Bearer ${key}`);
+      opt.reasoning && Object.assign(headers, { 'OpenAI-Beta': 'responses=experimental', conversation_id: opt.cid, session_id: opt.cid });
 
-      let res = await fetch(opt.endpoint || providers.oai.endpoint, {
+      let res = await fetch(providers.oai.endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
-        signal: opt.signal
+        signal
       });
 
-      //
-      // STREAMING
-      //
+      // -----------------------------
+      // STREAMING (Responses API)
+      // -----------------------------
       if (opt.stream) {
-        if (!res.body) throw new Error('Streaming response missing body');
+        if (!res.body) throw new Error('Missing streaming body');
 
         let assembled = [];
+        let textEmitted = false;
+        let toolInvoked = false;
 
         await bodystream(res.body, {
           text: (kind, chunk) => {
-            if (kind === 'delta') {
-              assembled.push(chunk);
-              opt.text?.(chunk);
-            }
+            if (kind === 'delta') assembled.push(chunk);
+            if (kind === 'done') textEmitted = true;
+            opt.text?.(kind, chunk);
           },
           reasoning: (kind, chunk) => {
-            opt.reasoning?.callback?.(chunk);
+            opt.reasoning?.callback?.(kind, chunk);
           },
-          img: (_, img) => assembled.push({ type: 'img', url: img.url }),
-          audio: (_, audio) => assembled.push({ type: 'audio', data: audio }),
+          img: (kind, image) => {
+            assembled.push({ type: 'img', url: image.url });
+            opt.img?.(kind, image);
+          },
+          audio: (kind, audio) => {
+            assembled.push({ type: 'audio', data: audio });
+            opt.audio?.(kind, audio);
+          },
           tool: async (_, call) => {
-            let handler = toolsObj?.[call.name]?.handler;
-            let result;
+            let toolset = typeof opt.tools === 'function' ? opt.tools() : opt.tools;
+
+            let defmt = provMod.defmt(call);
+            let defmt0 = defmt.calls[0];
+            logs.push(defmt);
+            msgs.push(call);
+
+            let output;
             try {
-              result = await handler(call.args);
+              if (defmt0.name === 'define_tool') {
+                output = await opt.metanull({
+                  meta: true,
+                  name: defmt0.args.tool_name,
+                  description: defmt0.args.tool_description,
+                  parameters: defmt0.args.parameters_schema,
+                });
+              } else if (toolset?.[defmt0.name]?.meta) {
+                output = await opt.metainvoke?.(defmt0.name, defmt0.args);
+              } else {
+                output = await toolset?.[defmt0.name]?.handler?.(defmt0.args);
+              }
             } catch (err) {
-              if (opt.signal?.aborted) throw err;
-              result = { success: false, error: err.toString() };
+              output = { success: false, error: err.toString() };
             }
 
-            msgs.push(provMod.fmt({
-              type: 'tool_call_result',
-              call: call.call,
-              output: result
-            }));
+            output ??= 'OK';
+            toolResults.push({ name: defmt0.name, args: defmt0.args, output });
 
-            toolResults.push({
-              name: call.name,
-              args: call.args,
-              output: result
-            });
-          }
+            let resultMsg = {
+              type: 'tool_call_result',
+              call: defmt0.call,
+              output,
+            };
+
+            logs.push(resultMsg);
+            msgs.push(provMod.fmt(resultMsg));
+          },
         });
 
-        msgs.push(provMod.fmt({
-          type: 'message',
-          role: 'assistant',
-          content: assembled
-        }));
+        if (assembled.length) {
+          let assistantMsg = { type: 'message', role: 'assistant', content: assembled };
+          logs.push(assistantMsg);
+          msgs.push(provMod.fmt(assistantMsg));
+        }
 
-        logs.push(...msgs.map(provMod.defmt));
-        return toolResults;
+        opt.checkpoint?.(logs);
+        if (textEmitted) return [logs, ...toolResults];
+        continue;
       }
 
-      //
-      // NON-STREAMING
-      //
-      let body = await res.json();
-      if (!body.output) throw new Error('Unexpected response');
+      let data = await res.json();
+      if (!data.output) { console.log(payload, data); throw new Error('Invalid response') }
 
-      for (let item of body.output) {
+      for (let item of data.output) {
+        if (checkAbort()) return [logs, ...toolResults];
+
         let internal = provMod.defmt(item);
 
+        // Assistant message
         if (internal.type === 'message') {
+          logs.push(internal);
           msgs.push(provMod.fmt(internal));
           continue;
         }
 
+        // Tool call(s)
         if (internal.type === 'tool_call') {
+          logs.push(internal);
           msgs.push(provMod.fmt(internal));
 
+          let toolset =
+            typeof opt.tools === 'function' ? opt.tools() : opt.tools;
+
           for (let call of internal.calls) {
-            let handler = toolsObj?.[call.name]?.handler;
-            let result;
+            if (checkAbort()) return [logs, ...toolResults];
+
+            let output;
             try {
-              result = await handler(call.args);
+              if (call.name === 'define_tool') {
+                output = await opt.metanull({
+                  meta: true,
+                  name: call.args.tool_name,
+                  description: call.args.tool_description,
+                  parameters: call.args.parameters_schema
+                });
+              } else if (toolset?.[call.name]?.meta) {
+                output = await opt.metainvoke?.(call.name, call.args);
+              } else {
+                output = await toolset?.[call.name]?.handler?.(call.args);
+              }
             } catch (err) {
-              if (opt.signal?.aborted) throw err;
-              result = { success: false, error: err.toString() };
+              output = { success: false, error: err.toString() };
             }
+            output ??= 'OK';
 
-            msgs.push(provMod.fmt({
+            toolResults.push({ name: call.name, args: call.args, output });
+
+            let resultMsg = {
               type: 'tool_call_result',
-              call: call.id,
-              output: result
-            }));
+              call: call.call,
+              output
+            };
 
-            toolResults.push({
-              name: call.name,
-              args: call.args,
-              output: result
-            });
+            logs.push(resultMsg);
+            msgs.push(provMod.fmt(resultMsg));
           }
         }
       }
 
-      let last = provMod.defmt(msgs.at(-1));
-      if (last?.role === 'assistant') {
-        logs.push(...msgs.map(provMod.defmt));
-        return toolResults;
+      opt.checkpoint?.(logs);
+
+      let last = logs.at(-1);
+      if (last?.type === 'message' && last.role === 'assistant') {
+        return [logs, ...toolResults];
       }
     }
   }
 
-  //
-  // ============================================================
-  // LEGACY CHAT COMPLETIONS (oail / xai)
-  // ============================================================
-  //
+  // ---------------------------------------------
+  // LEGACY PROVIDERS (oail / xai)
+  // ---------------------------------------------
   if (prov === 'oail' || prov === 'xai') {
-    let cfgProv = providers[prov];
-    let key = opt.key || cfgProv.key;
-
-    let toolChoice =
-      typeof opt.call === 'string' &&
-      !['auto', 'required', 'none'].includes(opt.call)
-        ? { type: 'function', function: { name: opt.call } }
-        : (opt.call || 'auto');
+    let cfg = providers[prov];
+    let key = opt.key || cfg.key;
 
     while (true) {
-      let toolsObj = typeof opt.tools === 'function' ? opt.tools() : opt.tools;
-      let ctools = toolsObj
-        ? Object.entries(toolsObj).map(([name, spec]) => ({
+      if (checkAbort()) return [logs, ...toolResults];
+
+      let tools =
+        opt.tools &&
+        Object.entries(typeof opt.tools === 'function' ? opt.tools() : opt.tools)
+          .map(([name, spec]) => ({
             type: 'function',
             function: {
               name,
               parameters: spec.parameters || {},
-              description: spec.description,
-              strict: spec.strict
+              description: spec.description
             }
-          }))
-        : undefined;
-
-      if (opt.stream && ctools?.length)
-        throw new Error('Streaming + tools not supported for this provider');
+          }));
 
       let payload = {
         model: cmodel,
-        messages: msgs,
-        tools: ctools,
-        tool_choice: ctools ? toolChoice : undefined,
-        stream: !!opt.stream
+        messages: [opt.instructions && { type: 'message', role: 'system', content: opt.instructions }, ...msgs].filter(Boolean),
+        tools,
+        tool_choice: tools?.length ? opt.call || 'auto' : undefined,
+        stream: opt.stream ?? true,
       };
 
       let headers = { 'Content-Type': 'application/json' };
-      if (key) headers.Authorization = `Bearer ${key}`;
-
-      let res = await fetch(opt.endpoint || cfgProv.endpoint, {
+      key && (headers['Authorization'] = `Bearer ${key}`);
+      let res = await fetch(cfg.endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
-        signal: opt.signal
+        signal
       });
 
-      //
-      // STREAMING
-      //
+      // -----------------------------
+      // STREAMING (Chat Completions)
+      // -----------------------------
       if (opt.stream) {
-        let text = '';
+        if (!res.body) throw new Error('Missing streaming body');
+
+        let finalText = '';
+
         await bodystreaml(res.body, chunk => {
-          text += chunk;
-          opt.text?.(chunk);
+          finalText += chunk;
+          opt.text?.('delta', chunk);
         });
+        opt.text?.('done', finalText);
 
-        msgs.push(provMod.fmt({
-          type: 'message',
-          role: 'assistant',
-          content: [text]
-        }));
-
-        logs.push(...msgs.map(provMod.defmt));
-        return toolResults;
+        let assistantMsg = { type: 'message', role: 'assistant', content: [finalText] };
+        logs.push(assistantMsg);
+        msgs.push(provMod.fmt(assistantMsg));
+        opt.checkpoint?.(logs);
+        return [logs, ...toolResults];
       }
 
-      //
-      // NON-STREAMING
-      //
       let data = await res.json();
       let msg = data.choices?.[0]?.message;
-      if (!msg) throw new Error('Unexpected response');
+      if (!msg) throw new Error('Invalid response');
 
-      if (msg.tool_calls) {
-        let internal = provMod.defmt(msg);
-        msgs.push(provMod.fmt(internal));
+      let internal = provMod.defmt(msg);
+      logs.push(internal);
+      msgs.push(provMod.fmt(internal));
+
+      if (internal.type === 'tool_call') {
+        let toolset =
+          typeof opt.tools === 'function' ? opt.tools() : opt.tools;
 
         for (let call of internal.calls) {
-          let handler = toolsObj?.[call.name]?.handler;
-          let result;
+          if (checkAbort()) return [logs, ...toolResults];
+
+          let handler = toolset?.[call.name]?.handler;
+          let output;
+
           try {
-            result = await handler(call.args);
+            output = await handler?.(call.args);
           } catch (err) {
-            if (opt.signal?.aborted) throw err;
-            result = { success: false, error: err.toString() };
+            output = { success: false, error: err.toString() };
           }
 
-          msgs.push(provMod.fmt({
-            type: 'tool_call_result',
-            call: call.id,
-            output: result
-          }));
+          toolResults.push({ name: call.name, args: call.args, output });
 
-          toolResults.push({
-            name: call.name,
-            args: call.args,
-            output: result
-          });
+          let result = {
+            type: 'tool_call_result',
+            call: call.call,
+            output
+          };
+
+          logs.push(result);
+          msgs.push(provMod.fmt(result));
         }
+
         continue;
       }
 
-      let internal = provMod.defmt(msg);
-      msgs.push(provMod.fmt(internal));
-      logs.push(...msgs.map(provMod.defmt));
-      return toolResults;
+      opt.checkpoint?.(logs);
+      return [logs, ...toolResults];
     }
   }
 }

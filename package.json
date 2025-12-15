@@ -10,12 +10,17 @@
     "test": "playwright test",
     "node-test": "node --env-file=.env node-test.js"
   },
+  "bin": {
+    "kitty": "./kitty-cli.js"
+  },
   "repository": {
     "type": "git",
     "url": "git@githubcom:camilaprav/kittygpt.git"
   },
   "dependencies": {
+    "commander": "^14.0.2",
     "mic": "^2.1.2",
+    "mrmime": "^2.0.1",
     "speaker": "^0.5.5",
     "wrtc": "^0.4.7",
     "ws": "^8.18.3"
