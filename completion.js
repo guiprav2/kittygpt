@@ -415,7 +415,9 @@ async function completion(logs, opt = {}) {
   let provMod = providers[prov];
   if (!provMod) throw new Error(`Unknown provider: ${prov}`);
 
-  // Apply role mappings
+  const toolResults = [];
+
+  // Apply role mapping (in-place safe)
   let baseMsgs = logs
     .map(x =>
       x.type !== 'message' || !opt.rolemap
@@ -424,58 +426,51 @@ async function completion(logs, opt = {}) {
     )
     .filter(x => x.type !== 'message' || x.role);
 
-  // Format for provider
+  // Provider-formatted messages
   let msgs = baseMsgs.map(m => provMod.fmt(m));
-
-  let logCompletion = () => null;
-  if (opt.logger === true) logCompletion = completion.defaultLogger;
-  else if (opt.logger) logCompletion = opt.logger;
 
   //
   // ============================================================
-  // OPENAI RESPONSES API
+  // OPENAI RESPONSES API (oai)
   // ============================================================
   //
   if (prov === 'oai') {
     let key = opt.key || providers.oai.key;
 
-    let cchoice =
+    let toolChoice =
       !opt.call || /^auto|required|none$/.test(opt.call)
         ? (opt.call || 'auto')
         : { type: 'function', name: opt.call };
 
     while (true) {
-      let ctools = Object.entries(
-        (typeof opt.tools === 'function' ? opt.tools() : opt.tools) || {}
-      ).map(([name, spec]) => ({
+      let toolsObj = typeof opt.tools === 'function' ? opt.tools() : opt.tools;
+      let ctools = Object.entries(toolsObj || {}).map(([name, spec]) => ({
         type: 'function',
         name,
         parameters: {},
         ...spec,
-        handler: undefined,
+        handler: undefined
       }));
 
       let payload = {
         model: cmodel,
         input: msgs,
         instructions: opt.instructions,
-        tools: ctools,
-        tool_choice: ctools?.length ? cchoice : undefined,
+        tools: ctools.length ? ctools : undefined,
+        tool_choice: ctools.length ? toolChoice : undefined,
         parallel_tool_calls: false,
         reasoning: opt.reasoning && { ...opt.reasoning, callback: undefined },
         include: opt.reasoning && ['reasoning.encrypted_content'],
         store: false,
-        prompt_cache_key: opt.cid,
+        prompt_cache_key: opt.cid
       };
 
       let headers = { 'Content-Type': 'application/json' };
-      key && (headers['Authorization'] = `Bearer ${key}`);
+      if (key) headers.Authorization = `Bearer ${key}`;
       if (opt.reasoning) {
-        Object.assign(headers, {
-          'OpenAI-Beta': 'responses=experimental',
-          conversation_id: opt.cid,
-          session_id: opt.cid
-        });
+        headers['OpenAI-Beta'] = 'responses=experimental';
+        headers.conversation_id = opt.cid;
+        headers.session_id = opt.cid;
       }
 
       let res = await fetch(opt.endpoint || providers.oai.endpoint, {
@@ -489,7 +484,7 @@ async function completion(logs, opt = {}) {
       // STREAMING
       //
       if (opt.stream) {
-        if (!res.body) throw new Error("Streaming response missing body");
+        if (!res.body) throw new Error('Streaming response missing body');
 
         let assembled = [];
 
@@ -503,22 +498,15 @@ async function completion(logs, opt = {}) {
           reasoning: (kind, chunk) => {
             opt.reasoning?.callback?.(chunk);
           },
-          img: (kind, image) => {
-            assembled.push({ type: 'img', url: image.url });
-            opt.img?.(image);
-          },
-          audio: (kind, audio) => {
-            assembled.push({ type: 'audio', data: audio });
-            opt.audio?.(audio);
-          },
-          tool: async (kind, call) => {
-            let rtools = typeof opt.tools === 'function' ? opt.tools() : opt.tools;
-            let handler = rtools?.[call.name]?.handler;
+          img: (_, img) => assembled.push({ type: 'img', url: img.url }),
+          audio: (_, audio) => assembled.push({ type: 'audio', data: audio }),
+          tool: async (_, call) => {
+            let handler = toolsObj?.[call.name]?.handler;
             let result;
-
             try {
               result = await handler(call.args);
             } catch (err) {
+              if (opt.signal?.aborted) throw err;
               result = { success: false, error: err.toString() };
             }
 
@@ -527,6 +515,12 @@ async function completion(logs, opt = {}) {
               call: call.call,
               output: result
             }));
+
+            toolResults.push({
+              name: call.name,
+              args: call.args,
+              output: result
+            });
           }
         });
 
@@ -536,21 +530,15 @@ async function completion(logs, opt = {}) {
           content: assembled
         }));
 
-        return msgs.map(provMod.defmt);
+        logs.push(...msgs.map(provMod.defmt));
+        return toolResults;
       }
 
       //
       // NON-STREAMING
       //
-      let ctype = res.headers.get('Content-Type');
-      let body = ctype?.includes('application/json')
-        ? await res.json()
-        : await res.text();
-
-      if (typeof body === 'string' || !body.output) {
-        console.error("Unexpected response:", body);
-        throw new Error("Unexpected response");
-      }
+      let body = await res.json();
+      if (!body.output) throw new Error('Unexpected response');
 
       for (let item of body.output) {
         let internal = provMod.defmt(item);
@@ -563,84 +551,81 @@ async function completion(logs, opt = {}) {
         if (internal.type === 'tool_call') {
           msgs.push(provMod.fmt(internal));
 
-          let rtools = typeof opt.tools === 'function' ? opt.tools() : opt.tools;
           for (let call of internal.calls) {
-            let handler = rtools?.[call.name]?.handler;
+            let handler = toolsObj?.[call.name]?.handler;
             let result;
-
-            try { result = await handler(call.args); }
-            catch (err) { result = { success: false, error: err.toString() }; }
+            try {
+              result = await handler(call.args);
+            } catch (err) {
+              if (opt.signal?.aborted) throw err;
+              result = { success: false, error: err.toString() };
+            }
 
             msgs.push(provMod.fmt({
               type: 'tool_call_result',
               call: call.id,
               output: result
             }));
-          }
-          continue;
-        }
 
-        if (internal.type === 'tool_call_result') {
-          msgs.push(provMod.fmt(internal));
-          continue;
+            toolResults.push({
+              name: call.name,
+              args: call.args,
+              output: result
+            });
+          }
         }
       }
 
-      let lastInt = provMod.defmt(msgs.at(-1));
-      if (lastInt.role === 'assistant') {
-        return msgs.map(provMod.defmt);
+      let last = provMod.defmt(msgs.at(-1));
+      if (last?.role === 'assistant') {
+        logs.push(...msgs.map(provMod.defmt));
+        return toolResults;
       }
     }
   }
 
   //
   // ============================================================
-  // LEGACY (oail / xai)
+  // LEGACY CHAT COMPLETIONS (oail / xai)
   // ============================================================
   //
   if (prov === 'oail' || prov === 'xai') {
     let cfgProv = providers[prov];
     let key = opt.key || cfgProv.key;
 
-    let tool_choice = opt.call || 'auto';
-    if (
+    let toolChoice =
       typeof opt.call === 'string' &&
       !['auto', 'required', 'none'].includes(opt.call)
-    ) {
-      tool_choice = {
-        type: 'function',
-        function: { name: opt.call }
-      };
-    }
+        ? { type: 'function', function: { name: opt.call } }
+        : (opt.call || 'auto');
 
     while (true) {
-      let ctools = null;
-      if (opt.tools) {
-        let entries =
-          Object.entries(typeof opt.tools === 'function' ? opt.tools() : opt.tools);
-        ctools = entries.map(([name, spec]) => ({
-          type: 'function',
-          function: {
-            name,
-            parameters: spec.parameters || {},
-            description: spec.description,
-            strict: spec.strict
-          }
-        }));
-      }
-      if (opt.stream && ctools?.length) throw new Error(`This provider doesn't support streaming + tools`);
+      let toolsObj = typeof opt.tools === 'function' ? opt.tools() : opt.tools;
+      let ctools = toolsObj
+        ? Object.entries(toolsObj).map(([name, spec]) => ({
+            type: 'function',
+            function: {
+              name,
+              parameters: spec.parameters || {},
+              description: spec.description,
+              strict: spec.strict
+            }
+          }))
+        : undefined;
+
+      if (opt.stream && ctools?.length)
+        throw new Error('Streaming + tools not supported for this provider');
 
       let payload = {
         model: cmodel,
         messages: msgs,
         tools: ctools,
-        tool_choice: ctools?.length ? tool_choice : undefined,
+        tool_choice: ctools ? toolChoice : undefined,
         stream: !!opt.stream
       };
 
       let headers = { 'Content-Type': 'application/json' };
-      key && (headers['Authorization'] = `Bearer ${key}`);
-      console.log(headers);
+      if (key) headers.Authorization = `Bearer ${key}`;
 
       let res = await fetch(opt.endpoint || cfgProv.endpoint, {
         method: 'POST',
@@ -653,61 +638,62 @@ async function completion(logs, opt = {}) {
       // STREAMING
       //
       if (opt.stream) {
-        let finalText = '';
-
+        let text = '';
         await bodystreaml(res.body, chunk => {
-          finalText += chunk;
+          text += chunk;
           opt.text?.(chunk);
         });
 
         msgs.push(provMod.fmt({
           type: 'message',
           role: 'assistant',
-          content: [finalText]
+          content: [text]
         }));
 
-        return msgs.map(provMod.defmt);
+        logs.push(...msgs.map(provMod.defmt));
+        return toolResults;
       }
 
       //
       // NON-STREAMING
       //
       let data = await res.json();
-      if (!data.choices?.length) {
-        console.error("Unexpected response:", data);
-        throw new Error("Unexpected response");
-      }
+      let msg = data.choices?.[0]?.message;
+      if (!msg) throw new Error('Unexpected response');
 
-      let choice = data.choices[0];
-      let message = choice.message;
-
-      if (message.tool_calls) {
-        let internal = provMod.defmt(message);
+      if (msg.tool_calls) {
+        let internal = provMod.defmt(msg);
         msgs.push(provMod.fmt(internal));
 
-        let rtools = typeof opt.tools === 'function' ? opt.tools() : opt.tools;
-
         for (let call of internal.calls) {
-          let handler = rtools?.[call.name]?.handler;
+          let handler = toolsObj?.[call.name]?.handler;
           let result;
-
-          try { result = await handler(call.args); }
-          catch (err) { result = { success: false, error: err.toString() }; }
+          try {
+            result = await handler(call.args);
+          } catch (err) {
+            if (opt.signal?.aborted) throw err;
+            result = { success: false, error: err.toString() };
+          }
 
           msgs.push(provMod.fmt({
             type: 'tool_call_result',
             call: call.id,
             output: result
           }));
-        }
 
+          toolResults.push({
+            name: call.name,
+            args: call.args,
+            output: result
+          });
+        }
         continue;
       }
 
-      let internal = provMod.defmt(message);
+      let internal = provMod.defmt(msg);
       msgs.push(provMod.fmt(internal));
-
-      return msgs.map(provMod.defmt);
+      logs.push(...msgs.map(provMod.defmt));
+      return toolResults;
     }
   }
 }

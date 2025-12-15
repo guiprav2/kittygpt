@@ -101,7 +101,7 @@ export default class Kitty {
 
             try {
               ev.target.closest('button').disabled = true;
-              logs = this.state.logs = await completion(logs, {
+              await completion(logs, {
                 model: 'oail:gpt-4o-mini',
                 endpoint:
                   'https://kittygpt.netlify.app/.netlify/functions/completion',
