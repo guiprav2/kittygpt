@@ -1,6 +1,6 @@
 {
   "name": "@camilaprav/kittygpt",
-  "version": "0.0.65",
+  "version": "0.0.66",
   "description": "A friendly, minimalist, fully-featured ChatGPT completion library",
   "main": "completion.js",
   "type": "module",
@@ -8,7 +8,7 @@
   "license": "GPL-v3.0+",
   "scripts": {
     "test": "playwright test",
-    "node-test": "node node-test.js"
+    "node-test": "node --env-file=.env node-test.js"
   },
   "repository": {
     "type": "git",

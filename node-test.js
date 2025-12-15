@@ -2,9 +2,6 @@ import { spawn } from 'child_process';
 import completion from './completion.js';
 import voicechat from './voicechat.js';
 
-async function serve() {
-}
-
 let [type = 'text', debug] = process.argv.slice(2);
 
 let child = await new Promise((resolve, reject) => {

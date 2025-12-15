@@ -144,7 +144,7 @@ let providers = {
         case 'message':
           return {
             role: x.role,
-            content: x.content.flatMap(y => providers.oail.fmtc(x.role, y))
+            content: x.content.flatMap(y => providers.oail.fmtc(x.role, y)).join('\n\n')
           };
 
         case 'tool_call':
@@ -175,19 +175,19 @@ let providers = {
     },
 
     fmtc: (role, x) => {
-      if (typeof x === 'string') return [x];
+      if (typeof x === 'string') return x;
       if (!Array.isArray(x)) {
         switch (x.type) {
           case 'img':
           case 'audio':
           case 'video':
-            return [`[${x.type} not supported in chat/completions: ${x.url}]`];
+            return `[${x.type} not supported in chat/completions: ${x.url}]`;
           case 'json':
-            return [JSON.stringify(x.data)];
+            return JSON.stringify(x.data);
         }
         throw new Error(`Unsupported content type: ${x.type}`);
       }
-      return x.flatMap(y => providers.oail.fmtc(role, y));
+      return x.flatMap(y => providers.oail.fmtc(role, y)).join('\n\n');
     },
 
     defmt: x => {
@@ -215,7 +215,7 @@ let providers = {
       return {
         type: 'message',
         role: x.role,
-        content: providers.oail.defmtc(x.content)
+        content: [providers.oail.defmtc(x.content)]
       };
     },
 
@@ -238,7 +238,7 @@ let providers = {
         case 'message':
           return {
             role: x.role,
-            content: x.content.flatMap(y => providers.xai.fmtc(x.role, y))
+            content: x.content.flatMap(y => providers.xai.fmtc(x.role, y)).join('\n\n')
           };
 
         case 'tool_call':
@@ -269,19 +269,19 @@ let providers = {
     },
 
     fmtc: (role, x) => {
-      if (typeof x === 'string') return [x];
+      if (typeof x === 'string') return x;
       if (!Array.isArray(x)) {
         switch (x.type) {
           case 'img':
           case 'audio':
           case 'video':
-            return [`[${x.type} not supported in chat/completions: ${x.url}]`];
+            return `[${x.type} not supported in chat/completions: ${x.url}]`;
           case 'json':
-            return [JSON.stringify(x.data)];
+            return JSON.stringify(x.data);
         }
         throw new Error(`Unsupported content type: ${x.type}`);
       }
-      return x.flatMap(y => providers.oail.fmtc(role, y));
+      return x.flatMap(y => providers.oail.fmtc(role, y)).join('\n\n');
     },
 
     defmt: x => {
@@ -305,7 +305,7 @@ let providers = {
       return {
         type: 'message',
         role: x.role,
-        content: providers.xai.defmtc(x.content)
+        content: [providers.xai.defmtc(x.content)]
       };
     },
 
@@ -438,7 +438,7 @@ async function completion(logs, opt = {}) {
   //
   if (prov === 'oai') {
     let key = opt.key || providers.oai.key;
-    if (!key) throw new Error(`Missing API key for oai`);
+    if (!key) throw new Error(`Missing API key`);
 
     let cchoice =
       !opt.call || /^auto|required|none$/.test(opt.call)
@@ -560,7 +560,6 @@ async function completion(logs, opt = {}) {
 
         if (internal.type === 'message') {
           msgs.push(provMod.fmt(internal));
-          internal.content.forEach(x => console.log('\n🤖 ASSISTANT:', x));
           continue;
         }
 
@@ -605,7 +604,7 @@ async function completion(logs, opt = {}) {
   if (prov === 'oail' || prov === 'xai') {
     let cfgProv = providers[prov];
     let key = opt.key || cfgProv.key;
-    if (!key) throw new Error(`Missing API key for ${prov}`);
+    if (!key) throw new Error(`Missing API key`);
 
     let tool_choice = opt.call || 'auto';
     if (
@@ -713,7 +712,6 @@ async function completion(logs, opt = {}) {
       let internal = provMod.defmt(message);
       msgs.push(provMod.fmt(internal));
 
-      console.log("\n🤖 ASSISTANT:", internal.content?.join("") || "");
       return msgs.map(provMod.defmt);
     }
   }

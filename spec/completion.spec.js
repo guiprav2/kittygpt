@@ -6,7 +6,7 @@ test.describe('Completion API', () => {
 
   test('should return a simple text response', async () => {
     const res = await completion(
-      [{ role: 'user', content: 'Say meow!' }],
+      [{ type: 'message', role: 'user', content: ['Say meow!'] }],
       { endpoint }
     );
     expect(res.content.toLowerCase()).toContain('meow');
@@ -15,7 +15,7 @@ test.describe('Completion API', () => {
   test('should return a streaming text response', async () => {
     let buf = '';
     const res = await completion(
-      [{ role: 'user', content: 'Say meow!' }],
+      [{ type: 'message', role: 'user', content: ['Say meow!'] }],
       { endpoint, stream: x => buf += x }
     );
     expect(buf.toLowerCase()).toContain('meow');
@@ -24,7 +24,7 @@ test.describe('Completion API', () => {
   test('should invoke a function call automatically', async () => {
     let calledArgs = null;
     const res = await completion(
-      [{ role: 'user', content: 'Select the blue button' }],
+      [{ type: 'message', role: 'user', content: ['Select the blue button'] }],
       {
         endpoint,
         fns: {
@@ -50,7 +50,7 @@ test.describe('Completion API', () => {
 
   test('should handle structured outputs', async () => {
     const res = await completion(
-      [{ role: 'user', content: 'Purr for me like a cat. Keep it short.' }],
+      [{ type: 'message', role: 'user', content: ['Purr for me like a cat. Keep it short.'] }],
       {
         endpoint: 'http://localhost:3000/completion',
         format: {
@@ -75,7 +75,7 @@ test.describe('Completion API', () => {
 
   test('should respect a system prompt', async () => {
     const res = await completion(
-      [{ role: 'user', content: 'What are you?' }],
+      [{ type: 'message', role: 'user', content: ['What are you?'] }],
       {
         endpoint: 'http://localhost:3000/completion',
         sysmsg: `You are a cat assistant. Pretend you're a cat in your responses. E.g. say "meow".`,
@@ -87,9 +87,9 @@ test.describe('Completion API', () => {
   test('should remap custom roles correctly', async () => {
     const res = await completion(
       [
-        { role: 'cat_user', content: 'Translate this to French: Hello' },
-        { role: 'cat_assistant', content: 'Bonjour' },
-        { role: 'cat_user', content: 'Now purr for me. Keep it short.' },
+        { type: 'message', role: 'cat_user', content: ['Translate this to French: Hello'] },
+        { type: 'message', role: 'cat_assistant', content: ['Bonjour'] },
+        { type: 'message', role: 'cat_user', content: ['Now purr for me. Keep it short.'] },
       ],
       {
         endpoint: 'http://localhost:3000/completion',
@@ -132,7 +132,7 @@ test.describe('Completion API', () => {
     };
     let wasCalled = false;
     const result = await completion(
-      [{ role: 'user', content: 'Do the thing!' }],
+      [{ type: 'message', role: 'user', content: ['Do the thing!'] }],
       {
         call: 'force',
         fns: {
@@ -154,7 +154,7 @@ test.describe('Completion API', () => {
     let logged = false;
 
     const res = await completion(
-      [{ role: 'user', content: 'Tell me a secret.' }],
+      [{ type: 'message', role: 'user', content: ['Tell me a secret.'] }],
       {
         endpoint: 'http://localhost:3000/completion',
         logger: logs => {
@@ -170,7 +170,7 @@ test.describe('Completion API', () => {
     let errorCaught = null;
     try {
       await completion(
-        [{ role: 'user', content: 'Are you there?' }],
+        [{ type: 'message', role: 'user', content: ['Are you there?'] }],
         {
           endpoint: 'http://localhost:3000/completion',
           key: 'shortkey',
