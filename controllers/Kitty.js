@@ -1,5 +1,5 @@
-import autoassist from 'https://esm.sh/@camilaprav/kittygpt@0.0.67/autoassist.js';
-import completion from 'https://esm.sh/@camilaprav/kittygpt@0.0.67/completion.js';
+import autoassist from '../autoassist.js';
+import completion from '../completion.js';
 import markdownit from 'https://esm.sh/markdown-it';
 
 let md = markdownit();
@@ -101,12 +101,13 @@ export default class Kitty {
 
             try {
               ev.target.closest('button').disabled = true;
-              await completion(logs, {
+              logs = this.state.logs = await completion(logs, {
                 model: 'oail:gpt-4o-mini',
                 endpoint:
                   'https://kittygpt.netlify.app/.netlify/functions/completion',
                 //key,
-                stream: x => {
+                stream: true,
+                text: x => {
                   if (botMsg.textContent === initialContent) botMsg.textContent = '';
                   content += x,
                   botMsg.innerHTML = md.render('🐱 ' + content.replaceAll('above', 'below'));

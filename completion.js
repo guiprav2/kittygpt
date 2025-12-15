@@ -460,7 +460,7 @@ async function completion(logs, opt = {}) {
         input: msgs,
         instructions: opt.instructions,
         tools: ctools,
-        tool_choice: cchoice,
+        tool_choice: ctools?.length ? cchoice : undefined,
         parallel_tool_calls: false,
         reasoning: opt.reasoning && { ...opt.reasoning, callback: undefined },
         include: opt.reasoning && ['reasoning.encrypted_content'],
@@ -468,10 +468,8 @@ async function completion(logs, opt = {}) {
         prompt_cache_key: opt.cid,
       };
 
-      let headers = {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json'
-      };
+      let headers = { 'Content-Type': 'application/json' };
+      key && (headers['Authorization'] = `Bearer ${key}`);
       if (opt.reasoning) {
         Object.assign(headers, {
           'OpenAI-Beta': 'responses=experimental',
@@ -636,14 +634,13 @@ async function completion(logs, opt = {}) {
         model: cmodel,
         messages: msgs,
         tools: ctools,
-        tool_choice,
+        tool_choice: ctools?.length ? tool_choice : undefined,
         stream: !!opt.stream
       };
 
-      let headers = {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json'
-      };
+      let headers = { 'Content-Type': 'application/json' };
+      key && (headers['Authorization'] = `Bearer ${key}`);
+      console.log(headers);
 
       let res = await fetch(opt.endpoint || cfgProv.endpoint, {
         method: 'POST',
