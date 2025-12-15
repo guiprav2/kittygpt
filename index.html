@@ -2,26 +2,43 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>kittygpt</title>
+    <title>KittyGPT</title>
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1"
     />
-  <script type="text/javascript">
-    !localStorage.getItem('webfoundry:dev') && (function(c,l,a,r,i,t,y){
-      c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-      t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-      y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-    })(window, document, "clarity", "script", "ubdofctfo6");
-  </script>
+    <script type="text/javascript">
+      !localStorage.getItem('webfoundry:dev') &&
+        (function (c, l, a, r, i, t, y) {
+          c[a] =
+            c[a] ||
+            function () {
+              (c[a].q = c[a].q || []).push(arguments);
+            };
+          t = l.createElement(r);
+          t.async = 1;
+          t.src = 'https://www.clarity.ms/tag/' + i;
+          y = l.getElementsByTagName(r)[0];
+          y.parentNode.insertBefore(t, y);
+        })(window, document, 'clarity', 'script', 'ubdofctfo6');
+    </script>
   </head>
-  <body class="flex flex-col [&>div:first-child]:flex-1 min-h-screen">
+  <body class="flex flex-col [&amp;&gt;div:first-child]:flex-1 min-h-screen">
     <script type="module">
       (async () => {
-        window.rootPrefix = /^\/(files|preview)\//.test(location.pathname) ? location.pathname.split('/').slice(0, 4).join('/') : '/';
-        if (rootPrefix === '/' || rootPrefix === '/collab.html') rootPrefix = '.';
-        let wforigin = new URL(location.href).searchParams.get('isolate') || location.origin;
-        if (/^(\w+\.)?(webfoundry.app|webfoundry\d+\.netlify\.app|localhost)$/.test(wforigin)) throw new Error(`Bad isolation origin`);
+        window.rootPrefix = /^\/(files|preview)\//.test(location.pathname)
+          ? location.pathname.split('/').slice(0, 4).join('/')
+          : '/';
+        if (rootPrefix === '/' || rootPrefix === '/collab.html')
+          rootPrefix = '.';
+        let wforigin =
+          new URL(location.href).searchParams.get('isolate') || location.origin;
+        if (
+          /^(\w+\.)?(webfoundry.app|webfoundry\d+\.netlify\.app|localhost)$/.test(
+            wforigin,
+          )
+        )
+          throw new Error(`Bad isolation origin`);
         if (new URL(location.href).searchParams.get('isolate') != null) {
           await navigator.serviceWorker.register('/sw.js');
           await navigator.serviceWorker.ready;
@@ -36,29 +53,49 @@
             if (!port) return;
             let handler = ev => {
               let data = ev.data || {};
-              if (data.type !== 'fetch:res' || data.project !== project || data.path !== path) return;
+              if (
+                data.type !== 'fetch:res' ||
+                data.project !== project ||
+                data.path !== path
+              )
+                return;
               removeEventListener('message', handler);
               port.postMessage(data);
             };
             addEventListener('message', handler);
             parent.postMessage({ type: 'fetch', project, path }, wforigin);
           });
-          let register = () => navigator.serviceWorker.controller.postMessage({ type:'webfoundry-register-tab', tabId });
-          navigator.serviceWorker.addEventListener('controllerchange', register);
+          let register = () =>
+            navigator.serviceWorker.controller.postMessage({
+              type: 'webfoundry-register-tab',
+              tabId,
+            });
+          navigator.serviceWorker.addEventListener(
+            'controllerchange',
+            register,
+          );
           register();
           if (!location.pathname.startsWith('/preview/')) {
             let path = parts.slice(3).join('/');
             if (path !== 'index.html') {
               let handler = async ev => {
                 let data = ev.data || {};
-                if (data.type !== 'fetch:res' || data.project !== wfThisProject || data.path !== path) return;
+                if (
+                  data.type !== 'fetch:res' ||
+                  data.project !== wfThisProject ||
+                  data.path !== path
+                )
+                  return;
                 removeEventListener('message', handler);
                 document.open();
                 document.write(await data.data.text());
                 document.close();
               };
               addEventListener('message', handler);
-              parent.postMessage({ type: 'fetch', project: wfThisProject, path }, wforigin);
+              parent.postMessage(
+                { type: 'fetch', project: wfThisProject, path },
+                wforigin,
+              );
               return;
             }
           }
@@ -71,7 +108,14 @@
           import(`${rootPrefix}/webfoundry/app.js`),
         ]);
         document.body.prepend(md.default.el(mapp.default));
-        parent.postMessage({ path: `pages/${location.pathname.slice(1).split('/').slice(3).join('/')}`, type: 'ready', status: 200 }, wforigin);
+        parent.postMessage(
+          {
+            path: `pages/${location.pathname.slice(1).split('/').slice(3).join('/')}`,
+            type: 'ready',
+            status: 200,
+          },
+          wforigin,
+        );
       })();
     </script>
   </body>
