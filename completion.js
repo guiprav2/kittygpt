@@ -438,7 +438,6 @@ async function completion(logs, opt = {}) {
   //
   if (prov === 'oai') {
     let key = opt.key || providers.oai.key;
-    if (!key) throw new Error(`Missing API key`);
 
     let cchoice =
       !opt.call || /^auto|required|none$/.test(opt.call)
@@ -481,7 +480,7 @@ async function completion(logs, opt = {}) {
         });
       }
 
-      let res = await fetch(providers.oai.endpoint, {
+      let res = await fetch(opt.endpoint || providers.oai.endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -604,7 +603,6 @@ async function completion(logs, opt = {}) {
   if (prov === 'oail' || prov === 'xai') {
     let cfgProv = providers[prov];
     let key = opt.key || cfgProv.key;
-    if (!key) throw new Error(`Missing API key`);
 
     let tool_choice = opt.call || 'auto';
     if (
@@ -647,7 +645,7 @@ async function completion(logs, opt = {}) {
         'Content-Type': 'application/json'
       };
 
-      let res = await fetch(cfgProv.endpoint, {
+      let res = await fetch(opt.endpoint || cfgProv.endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),

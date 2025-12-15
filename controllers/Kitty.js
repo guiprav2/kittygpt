@@ -1,5 +1,5 @@
-import autoassist from 'https://esm.sh/@camilaprav/kittygpt@0.0.29/autoassist.js';
-import completion from 'https://esm.sh/@camilaprav/kittygpt@0.0.29/completion.js';
+import autoassist from 'https://esm.sh/@camilaprav/kittygpt@0.0.67/autoassist.js';
+import completion from 'https://esm.sh/@camilaprav/kittygpt@0.0.67/completion.js';
 import markdownit from 'https://esm.sh/markdown-it';
 
 let md = markdownit();
@@ -9,6 +9,7 @@ export default class Kitty {
   state = {
     logs: [
       {
+        type: 'message',
         role: 'system',
         content: [
           `You're KittyGPT, a helpful assistant who loves kittens and code.`,
@@ -84,7 +85,7 @@ export default class Kitty {
                 msg: 'Please enter your OpenAI API key to use the chat.',
               });*/
 
-            logs.push({ role: 'user', content: input });
+            logs.push({ type: 'message', role: 'user', content: [input] });
             const userMsg = document.createElement('p');
             userMsg.className = 'text-right text-blue-600';
             userMsg.textContent = '🧍‍♀️ ' + input;
@@ -100,7 +101,8 @@ export default class Kitty {
 
             try {
               ev.target.closest('button').disabled = true;
-              const res = await completion(logs, {
+              await completion(logs, {
+                model: 'oail:gpt-4o-mini',
                 endpoint:
                   'https://kittygpt.netlify.app/.netlify/functions/completion',
                 //key,
@@ -112,7 +114,6 @@ export default class Kitty {
                   chatLog.scrollTop = chatLog.scrollHeight;
                 },
               });
-              logs.push({ role: 'assistant', content: res.content });
             } catch (err) {
               logs.pop();
               let p = botMsg.parentElement;

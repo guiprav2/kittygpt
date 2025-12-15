@@ -22,7 +22,7 @@ try {
       let joke = `Tell me a cat joke.`;
       console.log('>', joke, '\n');
       let logs = [{ role: 'user', content: joke }];
-      let res = await completion(logs, {
+      await completion(logs, {
         endpoint: 'http://localhost:3000/completion',
         stream: x => process.stdout.write(x),
       });
