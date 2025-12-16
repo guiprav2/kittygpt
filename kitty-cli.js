@@ -16,12 +16,13 @@ program
   .name('kitty')
   .description('KittyGPT interactive CLI')
   .argument('[state]', 'JSON file to load/save conversation state')
-  .option('--model <model>', 'Model specifier (oai:*, oail:*, xai:*)', 'oai:gpt-5.1-codex')
+  .option('--model <model>', 'Model specifier (oai:*, oail:*, xai:*)')
   .option('--reasoning <level>', 'Reasoning effort: low | medium | high')
   .option('--instructions <file>', 'Path to instructions file')
   .option('--vanilla', 'Disable built-in instructions')
   .option('--no-agentsmd <file>', 'Disables AGENTS.md tracking')
   .option('--system <message...>', 'Add system message(s)')
+  .option('--tools <path...>', 'Tool modules to load')
   .option('--no-shell', 'Disable shell tool')
   .option('--no-meta', 'Disable meta-null tools')
   .option('--no-automedia', 'Disable automatic media URL expansion')
@@ -49,7 +50,7 @@ if (fname) {
 
 state ??= {
   options: {
-    model: opts.model,
+    model: opts.model || 'oai:gpt-5.1-codex',
     cid: crypto.randomUUID(),
     instructions: null,
     reasoning: opts.reasoning
@@ -68,7 +69,7 @@ if (opts.stream && !state.options.model.startsWith('oai:')) {
 /* --------------------------------------------------
  * Apply CLI overrides
  * -------------------------------------------------- */
-state.options.model = opts.model;
+if (opts.model) state.options.model = opts.model;
 
 if (opts.reasoning) {
   state.options.reasoning = {
@@ -438,11 +439,14 @@ if (opts.system) {
   }
 }
 
+let modtools = {};
+opts.tools && await Promise.all(opts.tools.map(async x => Object.assign(modtools, { ...await import(`./${x}`) })));
+
 /* --------------------------------------------------
  * Tool factory
  * -------------------------------------------------- */
 function tools() {
-  const t = { ...state.metatools };
+  const t = { ...state.metatools, ...modtools };
 
   /* ---------- shell tool ---------- */
   if (opts.shell) {
@@ -545,6 +549,7 @@ function prompter({ prompt = '> ', pipe = false } = {}) {
   });
 
   let abortController = null;
+  let justAborted = false;
   let busy = false;
   let resolveLine = null;
 
@@ -566,27 +571,31 @@ function prompter({ prompt = '> ', pipe = false } = {}) {
       return;
     }
 
-    // Clear typed input
+    // Clear current input
     if (rl.line.length) {
       rl.clearLine(0);
+      rl.prompt();
       return;
     }
 
-    // Empty line → exit
-    rl.close();
-    process.exit(0);
+    // Signal exit to loop
+    const r = resolveLine;
+    resolveLine = null;
+    r?.(null);
   });
 
   return {
     ask() {
       if (pipe) {
-        return new Promise(async resolve => {
-          const { value, done } = await rl[Symbol.asyncIterator]().next();
-          resolve(done ? '' : String(value).trim());
-        });
+        return (async () => {
+          const { value, done } =
+            await rl[Symbol.asyncIterator]().next();
+          return done ? null : String(value).trim();
+        })();
       }
 
       return new Promise(resolve => {
+        justAborted = false;
         resolveLine = resolve;
         rl.prompt();
       });
@@ -604,6 +613,7 @@ function prompter({ prompt = '> ', pipe = false } = {}) {
     },
 
     close() {
+      resolveLine?.();
       rl.close();
     },
   };
@@ -620,6 +630,7 @@ process.on('SIGINT', () => null);
 while (true) {
   (!opts.pipe || state.logs.some(x => x.role === 'user')) && console.log();
   const text = await prompt.ask();
+  if (text == null) break;
   if (!text) continue;
 
   if (opts.agentsmd) {
@@ -688,3 +699,5 @@ while (true) {
     prompt.endCompletion();
   }
 }
+
+prompt.close();
