@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import completion from './completion.js';
 import crypto from 'crypto';
-import readline from 'readline/promises';
+import readline from 'readline';
 import { Command } from 'commander';
 import { readFileSync, writeFileSync } from 'fs';
 import { spawn } from 'child_process';
@@ -537,21 +537,72 @@ function tools() {
 /* --------------------------------------------------
  * Input helper
  * -------------------------------------------------- */
-export function prompter({ prompt = '> ', pipe = false } = {}) {
-  const rl = readline.createInterface({ input, output, terminal: !pipe });
+function prompter({ prompt = '> ', pipe = false } = {}) {
+  const rl = readline.createInterface({
+    input,
+    output,
+    terminal: !pipe,
+  });
+
+  let abortController = null;
+  let busy = false;
+  let resolveLine = null;
+
+  rl.setPrompt(prompt);
+
+  rl.on('line', line => {
+    const r = resolveLine;
+    resolveLine = null;
+    r?.(line.trim());
+  });
+
+  rl.on('SIGINT', () => {
+    // Abort running completion
+    if (busy) {
+      abortController?.abort();
+      abortController = null;
+      busy = false;
+      output.write('\n');
+      return;
+    }
+
+    // Clear typed input
+    if (rl.line.length) {
+      rl.clearLine(0);
+      return;
+    }
+
+    // Empty line → exit
+    rl.close();
+    process.exit(0);
+  });
+
   return {
-    async ask() {
-      try {
-        if (pipe) {
+    ask() {
+      if (pipe) {
+        return new Promise(async resolve => {
           const { value, done } = await rl[Symbol.asyncIterator]().next();
-          return done ? '' : String(value).trim();
-        } else {
-          return (await rl.question(prompt)).trim();
-        }
-      } catch {
-        return '';
+          resolve(done ? '' : String(value).trim());
+        });
       }
+
+      return new Promise(resolve => {
+        resolveLine = resolve;
+        rl.prompt();
+      });
     },
+
+    startCompletion() {
+      abortController = new AbortController();
+      busy = true;
+      return abortController;
+    },
+
+    endCompletion() {
+      abortController = null;
+      busy = false;
+    },
+
     close() {
       rl.close();
     },
@@ -559,6 +610,7 @@ export function prompter({ prompt = '> ', pipe = false } = {}) {
 }
 
 let prompt = prompter({ prompt: '> ', pipe: opts.pipe ?? !process.stdin.isTTY });
+process.on('SIGINT', () => null);
 
 /* --------------------------------------------------
  * REPL loop
@@ -584,43 +636,55 @@ while (true) {
   }
 
   state.logs.push({ role: 'user', content: text });
+  let ac = prompt.startCompletion();
 
-  let textEmitted = false;
-  await completion(state.logs, {
-    ...state.options,
-    instructions: state.options.model.startsWith('oai:') && state.options.instructions,
-    automedia: opts.automedia,
-    tools,
-    metanull: opts.meta && (({ name, ...spec }) => {
-      state.metatools[name] = spec;
-      opts.dbg && console.log(`\n🤖 META: ${name} defined`, `(${JSON.stringify(spec, null, 2)})`);
-    }),
-    metainvoke: (name, args) => opts.dbg && console.log(`\n🤖 META: ${name} invoked`, `(${JSON.stringify(args, null, 2)})`),
-    reasoning: state.options.reasoning && {
-      ...state.options.reasoning,
-      callback: (kind, x) => opts.dbg && kind === 'done' && (!opts.pipe ? console.log(`\n🤖 REASONING:`, x) : console.log(x)),
-    },
-    stream: opts.stream,
-    text: (kind, x) => {
-      if (kind !== 'delta') return;
-      !textEmitted && console.log();
-      output.write(x);
-      textEmitted = true;
-    },
-    checkpoint: () => {
-      if (!fname) return;
-      let logs = state.logs.filter(x => !x.instructions && !x.agentsmd);
-      writeFileSync(fname, JSON.stringify({ ...state, logs }, null, 2));
-    },
-    dbg: opts.dbg,
-  });
+  try {
+    let textEmitted = false;
+    await completion(state.logs, {
+      ...state.options,
+      instructions: state.options.model.startsWith('oai:') && state.options.instructions,
+      automedia: opts.automedia,
+      tools,
+      metanull: opts.meta && (({ name, ...spec }) => {
+        state.metatools[name] = spec;
+        opts.dbg && console.log(`\n🤖 META: ${name} defined`, `(${JSON.stringify(spec, null, 2)})`);
+      }),
+      metainvoke: (name, args) => opts.dbg && console.log(`\n🤖 META: ${name} invoked`, `(${JSON.stringify(args, null, 2)})`),
+      reasoning: state.options.reasoning && {
+        ...state.options.reasoning,
+        callback: (kind, x) => opts.dbg && kind === 'done' && (!opts.pipe ? console.log(`\n🤖 REASONING:`, x) : console.log(x)),
+      },
+      stream: opts.stream,
+      text: (kind, x) => {
+        if (kind !== 'delta') return;
+        !textEmitted && console.log();
+        output.write(x);
+        textEmitted = true;
+      },
+      img: (_, x) => {
+        console.log();
+        !opts.pipe ? console.log(`\n🤖 IMAGE GENERATED:`, x) : console.log(x)
+      },
+      checkpoint: () => {
+        if (!fname) return;
+        let logs = state.logs.filter(x => !x.instructions && !x.agentsmd);
+        writeFileSync(fname, JSON.stringify({ ...state, logs }, null, 2));
+      },
+      dbg: opts.dbg,
+      signal: ac.signal,
+    });
 
-  if (opts.stream) console.log();
-  else {
-    const last = state.logs.at(-1);
-    if (last?.role === 'assistant') {
-      let msg = last.content .map(x => typeof x === 'string' ? x : (x.url && `Media URL: ${x.url}`) ?? (x.data && `JSON: ${JSON.stringify(x.data, null, 2)}`)) .join('\n\n');
-      !opts.pipe ? console.log(`\n🤖 ASSISTANT:`, msg) : console.log('\n' + msg);
+    if (opts.stream) console.log();
+    else {
+      const last = state.logs.at(-1);
+      if (last?.role === 'assistant') {
+        let msg = last.content .map(x => typeof x === 'string' ? x : (x.url && `Media URL: ${x.url}`) ?? (x.data && `JSON: ${JSON.stringify(x.data, null, 2)}`)) .join('\n\n');
+        !opts.pipe ? console.log(`\n🤖 ASSISTANT:`, msg) : console.log('\n' + msg);
+      }
     }
+  } catch (err) {
+    !err.toString().includes('AbortError') && console.error(err);
+  } finally {
+    prompt.endCompletion();
   }
 }

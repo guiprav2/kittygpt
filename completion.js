@@ -517,6 +517,27 @@ async function completion(logs, opt = {}) {
         handler: undefined
       }));
 
+      if (opt.automedia) {
+        toolDefs.push({
+          type: 'function',
+          name: 'image_gen',
+          description: 'Generate an image from a text prompt',
+          parameters: {
+            type: 'object',
+            properties: {
+              prompt: { type: 'string' },
+              size: {
+                type: 'string',
+                enum: ['1024x1024', '1024x1536', '1536x1024', 'auto'],
+                default: 'auto'
+              },
+              n: { type: 'integer', default: 1 }
+            },
+            required: ['prompt']
+          },
+        });
+      }
+
       // Meta-null tool support
       if (opt.metanull) {
         toolDefs.push({
@@ -606,6 +627,25 @@ async function completion(logs, opt = {}) {
                   description: defmt0.args.tool_description,
                   parameters: defmt0.args.parameters_schema,
                 });
+              } else if (defmt0.name === 'image_gen') {
+                let res = await fetch('https://api.openai.com/v1/images/generations', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${providers.oai.key}`
+                  },
+                  body: JSON.stringify({
+                    model: 'gpt-image-1',
+                    prompt: defmt0.args.prompt,
+                    size: defmt0.args.size,
+                    n: defmt0.args.n,
+                  })
+                });
+
+                let json = await res.json();
+                console.log(json);
+                if (!json.data) throw new Error('Invalid image response');
+                output = json.data.map(x => x.url).join('\n');
               } else if (toolset?.[defmt0.name]?.meta) {
                 output = await opt.metainvoke?.(defmt0.name, defmt0.args);
               } else {
