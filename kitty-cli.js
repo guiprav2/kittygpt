@@ -20,7 +20,7 @@ program
   .option('--reasoning <level>', 'Reasoning effort: low | medium | high')
   .option('--instructions <file>', 'Path to instructions file')
   .option('--vanilla', 'Disable built-in instructions')
-  .option('--no-agentsmd <file>', 'Disables AGENTS.md tracking')
+  .option('--no-agentsmd', 'Disables AGENTS.md tracking')
   .option('--system <message...>', 'Add system message(s)')
   .option('--tools <path...>', 'Tool modules to load')
   .option('--no-shell', 'Disable shell tool')

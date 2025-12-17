@@ -1,4 +1,5 @@
 *.bundle.js
+*.json
 .env
 .netlify
 node_modules

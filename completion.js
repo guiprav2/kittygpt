@@ -1,5 +1,351 @@
 import { lookup as mimeLookup } from 'mrmime';
 
+let providers = {
+  //
+  // ============================================================
+  // OPENAI RESPONSES API  (oai:)
+  // ============================================================
+  //
+  oai: {
+    endpoint: 'https://api.openai.com/v1/responses',
+    modelsEndpoint: 'https://api.openai.com/v1/models',
+    key: globalThis.process?.env?.OPENAI_API_KEY,
+
+    // ----------------------------
+    // Internal → Provider
+    // ----------------------------
+    fmt(x) {
+      switch (x.type) {
+        case 'message':
+          return {
+            type: 'message',
+            role: x.role,
+            content: x.content.flatMap(y => this.fmtc(x.role, y))
+          };
+
+        case 'tool_call': {
+          const tc = x.calls[0];
+          return {
+            type: 'function_call',
+            name: tc.name,
+            arguments: JSON.stringify(tc.args),
+            call_id: tc.call
+          };
+        }
+
+        case 'tool_call_result': {
+          const output =
+            x.output == null
+              ? 'OK'
+              : typeof x.output === 'string'
+                ? x.output
+                : JSON.stringify(x.output);
+
+          return {
+            type: 'function_call_output',
+            call_id: x.call,
+            output
+          };
+        }
+
+        case 'reasoning':
+          return {
+            type: 'reasoning',
+            id: x.id,
+            summary: x.summary || []
+          };
+
+        default:
+          throw new Error(`Unknown message type: ${x.type}`);
+      }
+    },
+
+    fmtc(role, x) {
+      if (typeof x === 'string') {
+        return [{
+          type: role === 'assistant' ? 'output_text' : 'input_text',
+          text: x
+        }];
+      }
+
+      if (!Array.isArray(x)) {
+        switch (x.type) {
+          case 'img':   return [{ type: 'input_image', image_url: x.url }];
+          case 'audio': return [{ type: 'input_audio', audio_url: x.url }];
+          case 'video': return [{ type: 'input_video', video_url: x.url }];
+          case 'json':  return [{ type: 'input_json', json: x.data }];
+          default:
+            throw new Error(`Unknown content type: ${x.type}`);
+        }
+      }
+
+      return x.flatMap(y => this.fmtc(role, y));
+    },
+
+    // ----------------------------
+    // Provider → Internal
+    // ----------------------------
+    defmt(x) {
+      switch (x.type || 'message') {
+        case 'message':
+          return {
+            type: 'message',
+            role: x.role,
+            content: x.content.map(this.defmtc)
+          };
+
+        case 'function_call':
+          return {
+            type: 'tool_call',
+            calls: [{
+              name: x.name,
+              call: x.call_id,
+              args: JSON.parse(x.arguments)
+            }]
+          };
+
+        case 'function_call_output': {
+          let output;
+          try { output = JSON.parse(x.output); }
+          catch { output = x.output; }
+
+          return {
+            type: 'tool_call_result',
+            call: x.call_id,
+            output
+          };
+        }
+
+        case 'reasoning':
+          return {
+            type: 'reasoning',
+            id: x.id,
+            summary: x.summary || []
+          };
+
+        default:
+          throw new Error(`Unknown message type: ${x.type}`);
+      }
+    },
+
+    defmtc(x) {
+      switch (x.type) {
+        case 'input_text':
+        case 'output_text':
+          return x.text;
+        case 'input_image':
+          return { type: 'img', url: x.image_url };
+        case 'input_audio':
+          return { type: 'audio', url: x.audio_url };
+        case 'input_video':
+          return { type: 'video', url: x.video_url };
+        case 'input_json':
+          return { type: 'json', data: x.json };
+        default:
+          throw new Error(`Unknown content type: ${x.type}`);
+      }
+    }
+  },
+
+  //
+  // ============================================================
+  // OPENAI CHAT COMPLETIONS (legacy) (oail:)
+  // ============================================================
+  //
+  oail: {
+    endpoint: 'https://api.openai.com/v1/chat/completions',
+    modelsEndpoint: 'https://api.openai.com/v1/models',
+    key: globalThis.process?.env?.OPENAI_API_KEY,
+
+    fmt(x) {
+      switch (x.type) {
+        case 'message':
+          return {
+            role: x.role,
+            content: x.content.map(c => this.fmtc(x.role, c)).join('\n\n')
+          };
+
+        case 'tool_call':
+          return {
+            role: 'assistant',
+            tool_calls: x.calls.map(tc => ({
+              id: tc.call,
+              type: 'function',
+              function: {
+                name: tc.name,
+                arguments: JSON.stringify(tc.args)
+              }
+            }))
+          };
+
+        case 'tool_call_result': {
+          const content =
+            x.output == null
+              ? 'OK'
+              : typeof x.output === 'string'
+                ? x.output
+                : JSON.stringify(x.output);
+
+          return {
+            role: 'tool',
+            tool_call_id: x.call,
+            content
+          };
+        }
+
+        case 'reasoning':
+          return null;
+
+        default:
+          throw new Error(`Unknown message type: ${x.type}`);
+      }
+    },
+
+    fmtc(_, x) {
+      if (typeof x === 'string') return x;
+
+      if (!Array.isArray(x)) {
+        switch (x.type) {
+          case 'json': return JSON.stringify(x.data);
+          default:
+            return `[${x.type} unsupported]`;
+        }
+      }
+
+      return x.map(y => this.fmtc(_, y)).join('\n\n');
+    },
+
+    defmt(x) {
+      if (x.tool_calls) {
+        return {
+          type: 'tool_call',
+          calls: x.tool_calls.map(tc => ({
+            name: tc.function.name,
+            call: tc.id,
+            args: JSON.parse(tc.function.arguments)
+          }))
+        };
+      }
+
+      if (x.role === 'tool') {
+        let output;
+        try { output = JSON.parse(x.content); }
+        catch { output = x.content; }
+
+        return {
+          type: 'tool_call_result',
+          call: x.tool_call_id,
+          output
+        };
+      }
+
+      return {
+        type: 'message',
+        role: x.role,
+        content: [x.content]
+      };
+    }
+  },
+
+  //
+  // ============================================================
+  // xAI (Grok) — chat-completions compatible
+  // ============================================================
+  //
+  xai: {
+    endpoint: 'https://api.x.ai/v1/chat/completions',
+    modelsEndpoint: 'https://api.x.ai/v1/models',
+    key: globalThis.process?.env?.XAI_KEY,
+
+    fmt(x) {
+      switch (x.type) {
+        case 'message':
+          return {
+            role: x.role,
+            content: x.content.map(c => this.fmtc(x.role, c)).filter(Boolean).join('\n\n')
+          };
+
+        case 'tool_call':
+          return {
+            role: 'assistant',
+            tool_calls: x.calls.map(tc => ({
+              id: tc.call,
+              type: 'function',
+              function: {
+                name: tc.name,
+                arguments: JSON.stringify(tc.args)
+              }
+            }))
+          };
+
+        case 'tool_call_result': {
+          const content =
+            x.output == null
+              ? 'OK'
+              : typeof x.output === 'string'
+                ? x.output
+                : JSON.stringify(x.output);
+
+          return {
+            role: 'tool',
+            tool_call_id: x.call,
+            content
+          };
+        }
+
+        default:
+          throw new Error(`Unknown message type: ${x.type}`);
+      }
+    },
+
+    fmtc(_, x) {
+      if (typeof x === 'string') return x;
+
+      if (!Array.isArray(x)) {
+        switch (x.type) {
+          case 'img': return null;
+          case 'json': return JSON.stringify(x.data);
+          default:
+            return `[${x.type} unsupported]`;
+        }
+      }
+
+      return x.map(y => this.fmtc(_, y)).join('\n\n');
+    },
+
+    defmt(x) {
+      if (x.tool_calls) {
+        return {
+          type: 'tool_call',
+          calls: x.tool_calls.map(tc => ({
+            name: tc.function.name,
+            call: tc.id,
+            args: JSON.parse(tc.function.arguments)
+          }))
+        };
+      }
+
+      if (x.role === 'tool') {
+        let output;
+        try { output = JSON.parse(x.content); }
+        catch { output = x.content; }
+
+        return {
+          type: 'tool_call_result',
+          call: x.tool_call_id,
+          output
+        };
+      }
+
+      return {
+        type: 'message',
+        role: x.role,
+        content: [x.content]
+      };
+    }
+  }
+};
+
 function automedia(x) {
   if (!Array.isArray(x.content)) return x;
 
@@ -28,321 +374,6 @@ function automedia(x) {
   if (!media.length) return x;
   return { ...x, content: [...x.content, ...media] };
 }
-
-let providers = {
-  //
-  // ============================================================
-  // OPENAI RESPONSES API  (oai:)
-  // ============================================================
-  //
-  oai: {
-    endpoint: 'https://api.openai.com/v1/responses',
-    modelsEndpoint: 'https://api.openai.com/v1/models',
-    key: globalThis.process?.env?.OPENAI_API_KEY,
-
-    fmt: x => {
-      switch (x.type) {
-
-        case 'message':
-          return {
-            type: 'message',
-            role: x.role,
-            content: x.content.flatMap(y => providers.oai.fmtc(x.role, y))
-          };
-
-        case 'tool_call': {
-          let tc = x.calls[0];
-          return {
-            type: 'function_call',
-            name: tc.name,
-            arguments: JSON.stringify(tc.args),
-            call_id: tc.call,
-          };
-        }
-
-        case 'tool_call_result':
-          return {
-            type: 'function_call_output',
-            call_id: x.call,
-            output: typeof x.output === 'object'
-              ? JSON.stringify(x.output)
-              : x.output
-          };
-
-        // ✅ NEW: outbound reasoning blocks
-        case 'reasoning':
-          return {
-            type: 'reasoning',
-            // Responses API expects: type: "reasoning", id?, summary?
-            id: x.id,
-            summary: x.summary || []
-          };
-
-        default:
-          throw new Error(`Unknown message type: ${x.type}`);
-      }
-    },
-
-    fmtc: (role, x) => {
-      if (typeof x === 'string') {
-        return [{ type: role === 'assistant' ? 'output_text' : 'input_text', text: x }];
-      }
-      if (!Array.isArray(x)) {
-        switch (x.type) {
-          case 'img': return [{ type: 'input_image', image_url: x.url }];
-          case 'audio': return [{ type: 'input_audio', audio_url: x.url }];
-          case 'video': return [{ type: 'input_video', video_url: x.url }];
-          case 'json': return [{ type: 'input_json', json: x.data }];
-        }
-        throw new Error(`Unknown content type: ${x.type}`);
-      }
-      return x.flatMap(y => providers.oai.fmtc(role, y));
-    },
-
-    defmt: x => {
-      switch (x.type || 'message') {
-
-        case 'message':
-          return {
-            type: 'message',
-            role: x.role,
-            content: x.content.map(providers.oai.defmtc)
-          };
-
-        case 'function_call':
-          return {
-            type: 'tool_call',
-            calls: [{
-              name: x.name,
-              call: x.call_id,
-              args: JSON.parse(x.arguments)
-            }]
-          };
-
-        case 'function_call_output': {
-          let output;
-          try { output = JSON.parse(x.output) } catch { output = x.output }
-          return {
-            type: 'tool_call_result',
-            call: x.call_id,
-            output
-          };
-        }
-
-        // ✅ NEW: inbound reasoning block from provider
-        case 'reasoning':
-          return {
-            type: 'reasoning',
-            id: x.id,
-            summary: x.summary || []
-          };
-
-        default:
-          throw new Error(`Unknown message type: ${x.type}`);
-      }
-    },
-
-    defmtc: x => {
-      switch (x.type) {
-        case 'input_text':
-        case 'output_text':
-          return x.text;
-        case 'input_image':
-          return { type: 'img', url: x.image_url };
-        case 'input_audio':
-          return { type: 'audio', url: x.audio_url };
-        case 'input_video':
-          return { type: 'video', url: x.video_url };
-        case 'input_json':
-          return { type: 'json', data: x.json };
-      }
-      throw new Error(`Unknown content type: ${x.type}`);
-    }
-  },
-
-  //
-  // ============================================================
-  // OPENAI CHAT COMPLETIONS (legacy) (oail:)
-  // ============================================================
-  //
-  oail: {
-    endpoint: 'https://api.openai.com/v1/chat/completions',
-    modelsEndpoint: 'https://api.openai.com/v1/models',
-    key: globalThis.process?.env?.OPENAI_API_KEY,
-
-    fmt: x => {
-      switch (x.type) {
-        case 'message':
-          return {
-            role: x.role,
-            content: x.content.flatMap(y => providers.oail.fmtc(x.role, y)).join('\n\n')
-          };
-
-        case 'tool_call':
-          return {
-            role: 'assistant',
-            tool_calls: x.calls.map(tc => ({
-              type: 'function',
-              function: {
-                name: tc.name,
-                arguments: JSON.stringify(tc.args)
-              }
-            }))
-          };
-
-        case 'tool_call_result':
-          return {
-            role: 'tool',
-            tool_call_id: x.call,
-            content: typeof x.output === 'string'
-              ? x.output
-              : JSON.stringify(x.output)
-          };
-
-        default:
-          throw new Error(`Unknown message type: ${x.type}`);
-      }
-    },
-
-    fmtc: (role, x) => {
-      if (typeof x === 'string') return x;
-      if (!Array.isArray(x)) {
-        switch (x.type) {
-          case 'img':
-          case 'audio':
-          case 'video':
-            return `[${x.type} not supported in chat/completions: ${x.url}]`;
-          case 'json':
-            return JSON.stringify(x.data);
-        }
-        throw new Error(`Unsupported content type: ${x.type}`);
-      }
-      return x.flatMap(y => providers.oail.fmtc(role, y)).join('\n\n');
-    },
-
-    defmt: x => {
-      if (x.tool_calls) {
-        return {
-          type: 'tool_call',
-          calls: x.tool_calls.map(tc => ({
-            id: tc.id,
-            name: tc.function.name,
-            args: JSON.parse(tc.function.arguments)
-          }))
-        };
-      }
-
-      if (x.role === 'tool') {
-        let output;
-        try { output = JSON.parse(x.content) } catch { output = x.content }
-        return {
-          type: 'tool_call_result',
-          call: x.tool_call_id,
-          output
-        };
-      }
-
-      return {
-        type: 'message',
-        role: x.role,
-        content: [providers.oail.defmtc(x.content)]
-      };
-    },
-
-    defmtc: c =>
-      Array.isArray(c) ? c.map(providers.oail.defmtc) : c,
-  },
-
-  //
-  // ============================================================
-  // xAI (Grok) — identical structure to Chat Completions
-  // ============================================================
-  //
-  xai: {
-    endpoint: 'https://api.x.ai/v1/chat/completions',
-    modelsEndpoint: 'https://api.x.ai/v1/models',
-    key: globalThis.process?.env?.XAI_KEY,
-
-    fmt: x => {
-      switch (x.type) {
-        case 'message':
-          return {
-            role: x.role,
-            content: x.content.flatMap(y => providers.xai.fmtc(x.role, y)).join('\n\n')
-          };
-
-        case 'tool_call':
-          return {
-            role: 'assistant',
-            tool_calls: x.calls.map(tc => ({
-              id: tc.id ?? crypto.randomUUID(),
-              type: 'function',
-              function: {
-                name: tc.name,
-                arguments: JSON.stringify(tc.args)
-              }
-            }))
-          };
-
-        case 'tool_call_result':
-          return {
-            role: 'tool',
-            tool_call_id: x.call,
-            content: typeof x.output === 'string'
-              ? x.output
-              : JSON.stringify(x.output)
-          };
-
-        default:
-          throw new Error(`Unknown message type: ${x.type}`);
-      }
-    },
-
-    fmtc: (role, x) => {
-      if (typeof x === 'string') return x;
-      if (!Array.isArray(x)) {
-        switch (x.type) {
-          case 'img':
-          case 'audio':
-          case 'video':
-            return `[${x.type} not supported in chat/completions: ${x.url}]`;
-          case 'json':
-            return JSON.stringify(x.data);
-        }
-        throw new Error(`Unsupported content type: ${x.type}`);
-      }
-      return x.flatMap(y => providers.oail.fmtc(role, y)).join('\n\n');
-    },
-
-    defmt: x => {
-      if (x.tool_calls) {
-        return {
-          type: 'tool_call',
-          calls: x.tool_calls.map(tc => ({
-            id: tc.id,
-            name: tc.function.name,
-            args: JSON.parse(tc.function.arguments)
-          }))
-        };
-      }
-
-      if (x.role === 'tool') {
-        let output;
-        try { output = JSON.parse(x.content) } catch { output = x.content }
-        return { type: 'tool_call_result', call: x.tool_call_id, output };
-      }
-
-      return {
-        type: 'message',
-        role: x.role,
-        content: [providers.xai.defmtc(x.content)]
-      };
-    },
-
-    defmtc: c =>
-      Array.isArray(c) ? c.map(providers.oail.defmtc) : c,
-  }
-};
 
 //
 // ============================================================
@@ -490,7 +521,7 @@ async function completion(logs, opt = {}) {
   }
 
   // Provider-formatted message buffer
-  let msgs = logs.map(m => provMod.fmt(m));
+  let msgs = logs.map(m => provMod.fmt(m)).filter(Boolean);
 
   // ---------------------------------------------
   // OPENAI RESPONSES API
@@ -643,7 +674,7 @@ async function completion(logs, opt = {}) {
                 });
 
                 let json = await res.json();
-                console.log(json);
+                //console.log(json);
                 if (!json.data) throw new Error('Invalid image response');
                 output = json.data.map(x => x.url).join('\n');
               } else if (toolset?.[defmt0.name]?.meta) {
@@ -808,9 +839,11 @@ async function completion(logs, opt = {}) {
         return [logs, ...toolResults];
       }
 
-      let data = await res.json();
+      let data = await res.text();
+      //console.log(payload, data);
+      data = JSON.parse(data);
       let msg = data.choices?.[0]?.message;
-      if (!msg) throw new Error('Invalid response');
+      if (!msg) { console.log(payload, data); throw new Error('Invalid response') }
 
       let internal = provMod.defmt(msg);
       logs.push(internal);
