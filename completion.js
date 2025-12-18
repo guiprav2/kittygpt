@@ -402,7 +402,7 @@ async function bodystream(body, { text, reasoning, tool, img, audio }) {
 
       let payload;
       try { payload = JSON.parse(line.replace(/^data:\s*/, '')); }
-      catch { continue; }
+      catch { continue }
 
       let { type } = payload;
 
@@ -617,7 +617,7 @@ async function completion(logs, opt = {}) {
       // -----------------------------
       // STREAMING (Responses API)
       // -----------------------------
-      if (opt.stream) {
+      if (opt.stream && !res.headers.get('content-type')?.startsWith?.('application/json')) {
         if (!res.body) throw new Error('Missing streaming body');
 
         let assembled = [];

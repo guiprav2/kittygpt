@@ -1,11 +1,18 @@
 #!/usr/bin/env node
-import completion from './completion.js';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
+import os from 'os';
+import path from 'path';
 import readline from 'readline';
 import { Command } from 'commander';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { spawn } from 'child_process';
 import { stdin as input, stdout as output } from 'process';
+
+const env = path.join(os.homedir(), '.kittygpt', '.env');
+if (!existsSync(env)) { console.error(`Missing ${env}`); process.exit(1) }
+dotenv.config({ path: env });
+const completion = (await import('./completion.js')).default;
 
 /* --------------------------------------------------
  * CLI definition
@@ -440,7 +447,7 @@ if (opts.system) {
 }
 
 let modtools = {};
-opts.tools && await Promise.all(opts.tools.map(async x => Object.assign(modtools, { ...await import(`./${x}`) })));
+opts.tools && await Promise.all(opts.tools.map(async x => Object.assign(modtools, { ...await import(`${process.cwd()}/${x}`) })));
 
 /* --------------------------------------------------
  * Tool factory
