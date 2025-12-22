@@ -599,7 +599,8 @@ async function completion(logs, opt = {}) {
         store: false,
         stream: opt.stream ?? true,
         reasoning: opt.reasoning ? { ...opt.reasoning, callback: undefined } : undefined,
-        include: opt.reasoning ? ['reasoning.encrypted_content'] : undefined,
+        include: opt.reasoning ? ['reasoning', 'reasoning.encrypted_content'] : undefined,
+        modalities: opt.reasoning ? ['text', 'reasoning'] : undefined,
       };
 
       let headers = { 'Content-Type': 'application/json' };
