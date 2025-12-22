@@ -479,7 +479,7 @@ function tools() {
         additionalProperties: false,
       },
       handler: async ({ command }) => {
-        opts.dbg && !opts.pipe && console.log('shell:', command);
+        opts.dbg && !opts.pipe && command[0] !== 'apply_patch' && console.log('shell:', command);
 
         let chunks = [];
         let exitCode = 0;
@@ -493,6 +493,7 @@ function tools() {
 
           if (file === 'apply_patch') {
             if (args.length !== 1) throw new Error(`apply_patch takes a single positional parameter`);
+            console.log('\n' + args[0]);
             return applyPatch(args[0]);
           }
 
@@ -549,7 +550,7 @@ function tools() {
       handler: ({ plan }) => {
         if (!plan.length) { console.log(`Plan updated: [Empty]`); return `Plan updated` }
         console.log(
-          `Plan updated:\n` +
+          `\nPlan updated:\n` +
             plan.map((x, i) => `- ${i + 1}. ${x.step} [${x.status}]`).join('\n')
         );
         return 'Plan updated';
