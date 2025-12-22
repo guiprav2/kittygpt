@@ -29,6 +29,7 @@ program
   .option('--vanilla', 'Disable built-in instructions')
   .option('--no-agentsmd', 'Disables AGENTS.md tracking')
   .option('--system <message...>', 'Add system message(s)')
+  .option('--preamble <path...>', 'Preamble message files to load')
   .option('--tools <path...>', 'Tool modules to load')
   .option('--no-shell', 'Disable shell tool')
   .option('--no-meta', 'Disable meta-null tools')
@@ -45,17 +46,16 @@ const fname = program.args[0];
 /* --------------------------------------------------
  * Load / initialize state
  * -------------------------------------------------- */
-let state;
+globalThis.kittyst = null;
 if (fname) {
   try {
-    state = JSON.parse(readFileSync(fname, 'utf8'));
+    kittyst = JSON.parse(readFileSync(fname, 'utf8'));
   } catch (err) {
     if (!String(err).includes('ENOENT')) throw err;
-    state = null;
   }
 }
 
-state ??= {
+kittyst ??= {
   options: {
     model: opts.model || 'oai:gpt-5.1-codex',
     cid: crypto.randomUUID(),
@@ -68,7 +68,7 @@ state ??= {
   logs: [],
 };
 
-if (opts.stream && !state.options.model.startsWith('oai:')) {
+if (opts.stream && !kittyst.options.model.startsWith('oai:')) {
   console.error(`Legacy OpenAI and xAI models don't support streaming with tools.`);
   process.exit(1);
 }
@@ -76,16 +76,16 @@ if (opts.stream && !state.options.model.startsWith('oai:')) {
 /* --------------------------------------------------
  * Apply CLI overrides
  * -------------------------------------------------- */
-if (opts.model) state.options.model = opts.model;
+if (opts.model) kittyst.options.model = opts.model;
 
 if (opts.reasoning) {
-  state.options.reasoning = {
+  kittyst.options.reasoning = {
     effort: opts.reasoning,
     summary: 'auto',
   };
 }
 
-state.options.instructions = opts.vanilla ? '' : `You are a coding agent running in KittyGPT CLI, a terminal-based coding assistant. KittyGPT CLI is an free software project led by Gui Prá (gui@guiprav.com). You are expected to be precise, safe, and helpful.
+kittyst.options.instructions = opts.vanilla ? '' : `You are a coding agent running in KittyGPT CLI, a terminal-based coding assistant. KittyGPT CLI is an free software project led by Gui Prá (gui@guiprav.com). You are expected to be precise, safe, and helpful.
 
 Your capabilities:
 
@@ -436,15 +436,23 @@ shell {"command":["apply_patch","*** Begin Patch\\n*** Add File: hello.txt\\n+He
 \`\`\``;
 
 if (opts.instructions) {
-  state.options.instructions += '\n\n' + readFileSync(opts.instructions, 'utf8');
-  !state.options.model.startsWith('oai:') && state.logs.unshift({ role: 'system', content: state.options.instructions, instructions: true });
+  kittyst.options.instructions += '\n\n' + readFileSync(opts.instructions, 'utf8');
+  !kittyst.options.model.startsWith('oai:') && kittyst.logs.unshift({ role: 'system', content: kittyst.options.instructions, instructions: true });
 }
 
 if (opts.system) {
   for (const msg of opts.system) {
-    state.logs.unshift({ role: 'system', content: msg });
+    kittyst.logs.unshift({ role: 'system', content: msg });
   }
 }
+
+let preambles = [];
+await Promise.all(opts.preamble?.map?.(async x => {
+  if (x.endsWith('.js')) return preambles.push((await import(`${process.cwd()}/${x}`)).default);
+  let fstr = readFileSync(x, { encoding: 'utf8' });
+  if (x.endsWith('.json')) return preambles.push(JSON.parse(fstr));
+  preambles.push({ role: 'system', content: [fstr] });
+}) || []);
 
 let modtools = {};
 opts.tools && await Promise.all(opts.tools.map(async x => Object.assign(modtools, { ...await import(`${process.cwd()}/${x}`) })));
@@ -453,7 +461,7 @@ opts.tools && await Promise.all(opts.tools.map(async x => Object.assign(modtools
  * Tool factory
  * -------------------------------------------------- */
 function tools() {
-  const t = { ...state.metatools, ...modtools };
+  const t = { ...kittyst.metatools, ...modtools };
 
   /* ---------- shell tool ---------- */
   if (opts.shell) {
@@ -635,7 +643,7 @@ process.on('SIGINT', () => null);
 !opts.pipe && (fname ? console.log('Now working on:', fname) : console.log(`Now working ephemeral.`));
 
 while (true) {
-  (!opts.pipe || state.logs.some(x => x.role === 'user')) && console.log();
+  (!opts.pipe || kittyst.logs.some(x => x.role === 'user')) && console.log();
   const text = await prompt.ask();
   if (text == null) break;
   if (!text) continue;
@@ -643,33 +651,34 @@ while (true) {
   if (opts.agentsmd) {
     try {
       let agentsmd = readFileSync('AGENTS.md', { encoding: 'utf8' });
-      let iPrev = state.logs.findIndex(x => x.agentsmd);
-      let iFirstUser = state.logs.findIndex(x => x.role === 'user');
+      let iPrev = kittyst.logs.findIndex(x => x.agentsmd);
+      let iFirstUser = kittyst.logs.findIndex(x => x.role === 'user');
       let msg = { role: 'user', content: `<user_instructions>${agentsmd}</user_instructions>`, agentsmd: true };
-      if (iPrev >= 0) state.logs.splice(iPrev, 1, msg);
-      else state.logs.splice(iFirstUser >= 0 ? iFirstUser - 1 : state.logs.length - 1, 0, msg);
+      if (iPrev >= 0) kittyst.logs.splice(iPrev, 1, msg);
+      else kittyst.logs.splice(iFirstUser >= 0 ? iFirstUser - 1 : kittyst.logs.length - 1, 0, msg);
     } catch (err) {
       if (!err.toString().includes('ENOENT')) throw err;
     }
   }
 
-  state.logs.push({ role: 'user', content: text });
+  kittyst.logs.push({ role: 'user', content: text });
   let ac = prompt.startCompletion();
 
   try {
     let textEmitted = false;
-    await completion(state.logs, {
-      ...state.options,
-      instructions: state.options.model.startsWith('oai:') && state.options.instructions,
+    await completion(kittyst.logs, {
+      ...kittyst.options,
+      instructions: kittyst.options.model.startsWith('oai:') && kittyst.options.instructions,
+      preamble: () => preambles.map(x => typeof x === 'function' ? x() : x).flat(),
       automedia: opts.automedia,
       tools,
       metanull: opts.meta && (({ name, ...spec }) => {
-        state.metatools[name] = spec;
+        kittyst.metatools[name] = spec;
         opts.dbg && console.log(`\n🤖 META: ${name} defined`, `(${JSON.stringify(spec, null, 2)})`);
       }),
       metainvoke: (name, args) => opts.dbg && console.log(`\n🤖 META: ${name} invoked`, `(${JSON.stringify(args, null, 2)})`),
-      reasoning: state.options.reasoning && {
-        ...state.options.reasoning,
+      reasoning: kittyst.options.reasoning && {
+        ...kittyst.options.reasoning,
         callback: (kind, x) => opts.dbg && kind === 'done' && (!opts.pipe ? console.log(`\n🤖 REASONING:`, x) : console.log(x)),
       },
       stream: opts.stream,
@@ -685,8 +694,8 @@ while (true) {
       },
       checkpoint: () => {
         if (!fname) return;
-        let logs = state.logs.filter(x => !x.instructions && !x.agentsmd);
-        writeFileSync(fname, JSON.stringify({ ...state, logs }, null, 2));
+        let logs = kittyst.logs.filter(x => !x.instructions && !x.agentsmd);
+        writeFileSync(fname, JSON.stringify({ ...kittyst, logs }, null, 2));
       },
       dbg: opts.dbg,
       signal: ac.signal,
@@ -694,7 +703,7 @@ while (true) {
 
     if (opts.stream) console.log();
     else {
-      const last = state.logs.at(-1);
+      const last = kittyst.logs.at(-1);
       if (last?.role === 'assistant') {
         let msg = last.content .map(x => typeof x === 'string' ? x : (x.url && `Media URL: ${x.url}`) ?? (x.data && `JSON: ${JSON.stringify(x.data, null, 2)}`)) .join('\n\n');
         !opts.pipe ? console.log(`\n🤖 ASSISTANT:`, msg) : console.log('\n' + msg);

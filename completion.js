@@ -23,15 +23,7 @@ let providers = {
             content: x.content.flatMap(y => this.fmtc(x.role, y))
           };
 
-        case 'tool_call': {
-          const tc = x.calls[0];
-          return {
-            type: 'function_call',
-            name: tc.name,
-            arguments: JSON.stringify(tc.args),
-            call_id: tc.call
-          };
-        }
+        case 'tool_call': return x.calls.map(y => ({ type: 'function_call', name: y.name, arguments: JSON.stringify(y.args), call_id: y.call }));
 
         case 'tool_call_result': {
           const output =
@@ -375,6 +367,8 @@ function automedia(x) {
   return { ...x, content: [...x.content, ...media] };
 }
 
+let arrayify = x => Array.isArray(x) ? x : [x];
+
 //
 // ============================================================
 // Streaming Implementations
@@ -520,8 +514,7 @@ async function completion(logs, opt = {}) {
     }
   }
 
-  // Provider-formatted message buffer
-  let msgs = logs.map(m => provMod.fmt(m)).filter(Boolean);
+  let msgs = logs.flatMap(m => provMod.fmt(m)).filter(Boolean);
 
   // ---------------------------------------------
   // OPENAI RESPONSES API
@@ -592,10 +585,14 @@ async function completion(logs, opt = {}) {
         });
       }
 
+      let preamble = (typeof opt.preamble === 'function' ? opt.preamble() : opt.preamble || [])
+        .map(x => ({ type: null, ...x, type: x.type || 'message' }))
+        .flatMap(x => provMod.fmt(x));
+
       let payload = {
         model: cmodel,
-        input: msgs,
-        instructions: opt.instructions,
+        input: [...preamble, ...msgs],
+        instructions: opt.instructions || undefined,
         tools: toolDefs.length ? toolDefs.map(t => ({ ...t, handler: undefined })) : undefined,
         tool_choice: toolDefs.length ? toolChoice : undefined,
         parallel_tool_calls: false,
@@ -696,14 +693,14 @@ async function completion(logs, opt = {}) {
             };
 
             logs.push(resultMsg);
-            msgs.push(provMod.fmt(resultMsg));
+            msgs.push(...arrayify(provMod.fmt(resultMsg)));
           },
         });
 
         if (assembled.length) {
           let assistantMsg = { type: 'message', role: 'assistant', content: assembled };
           logs.push(assistantMsg);
-          msgs.push(provMod.fmt(assistantMsg));
+          msgs.push(...arrayify(provMod.fmt(assistantMsg)));
         }
 
         opt.checkpoint?.(logs);
@@ -712,7 +709,7 @@ async function completion(logs, opt = {}) {
       }
 
       let data = await res.json();
-      if (!data.output) { console.log(payload, data); throw new Error('Invalid response') }
+      if (!data.output) { console.log(JSON.stringify(data, null, 2)); throw new Error('Invalid response') }
 
       for (let item of data.output) {
         if (checkAbort()) return [logs, ...toolResults];
@@ -722,14 +719,14 @@ async function completion(logs, opt = {}) {
         // Assistant message
         if (internal.type === 'message') {
           logs.push(internal);
-          msgs.push(provMod.fmt(internal));
+          msgs.push(...arrayify(provMod.fmt(internal)));
           continue;
         }
 
         // Tool call(s)
         if (internal.type === 'tool_call') {
           logs.push(internal);
-          msgs.push(provMod.fmt(internal));
+          msgs.push(...arrayify(provMod.fmt(internal)));
 
           let toolset =
             typeof opt.tools === 'function' ? opt.tools() : opt.tools;
@@ -765,7 +762,7 @@ async function completion(logs, opt = {}) {
             };
 
             logs.push(resultMsg);
-            msgs.push(provMod.fmt(resultMsg));
+            msgs.push(...arrayify(provMod.fmt(resultMsg)));
           }
         }
       }
@@ -811,6 +808,7 @@ async function completion(logs, opt = {}) {
 
       let headers = { 'Content-Type': 'application/json' };
       key && (headers['Authorization'] = `Bearer ${key}`);
+      //console.log(JSON.stringify(payload, null, 2));
       let res = await fetch(cfg.endpoint, {
         method: 'POST',
         headers,
@@ -834,7 +832,7 @@ async function completion(logs, opt = {}) {
 
         let assistantMsg = { type: 'message', role: 'assistant', content: [finalText] };
         logs.push(assistantMsg);
-        msgs.push(provMod.fmt(assistantMsg));
+        msgs.push(...arrayify(provMod.fmt(assistantMsg)));
         opt.checkpoint?.(logs);
         return [logs, ...toolResults];
       }
@@ -846,8 +844,9 @@ async function completion(logs, opt = {}) {
       if (!msg) { console.log(payload, data); throw new Error('Invalid response') }
 
       let internal = provMod.defmt(msg);
+      if (internal.role === 'assistant' && !internal.content.join('\n').trim()) { console.log(`LLM got lazy, retrying...`); continue }
       logs.push(internal);
-      msgs.push(provMod.fmt(internal));
+      msgs.push(...arrayify(provMod.fmt(internal)));
 
       if (internal.type === 'tool_call') {
         let toolset =
@@ -862,6 +861,7 @@ async function completion(logs, opt = {}) {
           try {
             output = await handler?.(call.args);
           } catch (err) {
+            console.error(err);
             output = { success: false, error: err.toString() };
           }
 
@@ -874,7 +874,7 @@ async function completion(logs, opt = {}) {
           };
 
           logs.push(result);
-          msgs.push(provMod.fmt(result));
+          msgs.push(...arrayify(provMod.fmt(result)));
         }
 
         continue;
