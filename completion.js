@@ -598,6 +598,8 @@ async function completion(logs, opt = {}) {
         parallel_tool_calls: false,
         store: false,
         stream: opt.stream ?? true,
+        reasoning: opt.reasoning ? { ...opt.reasoning, callback: undefined } : undefined,
+        include: opt.reasoning ? ['reasoning.encrypted_content'] : undefined,
       };
 
       let headers = { 'Content-Type': 'application/json' };
@@ -805,6 +807,7 @@ async function completion(logs, opt = {}) {
         messages: [opt.instructions && { type: 'message', role: 'system', content: opt.instructions }, ...msgs].filter(Boolean),
         tools,
         tool_choice: tools?.length ? opt.call || 'auto' : undefined,
+        parallel_tool_calls: false,
         stream: opt.stream ?? true,
       };
 
