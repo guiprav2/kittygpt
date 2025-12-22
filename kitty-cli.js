@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import applyPatch from './applyPatch.js';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import os from 'os';
@@ -479,6 +480,7 @@ function tools() {
       },
       handler: async ({ command }) => {
         opts.dbg && !opts.pipe && console.log('shell:', command);
+
         let chunks = [];
         let exitCode = 0;
 
@@ -488,6 +490,11 @@ function tools() {
           }
 
           const [file, ...args] = command;
+
+          if (file === 'apply_patch') {
+            if (args.length !== 1) throw new Error(`apply_patch takes a single positional parameter`);
+            return applyPatch(args[0]);
+          }
 
           await new Promise(resolve => {
             const child = spawn(file, args, {

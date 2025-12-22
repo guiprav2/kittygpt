@@ -694,6 +694,7 @@ async function completion(logs, opt = {}) {
 
             logs.push(resultMsg);
             msgs.push(...arrayify(provMod.fmt(resultMsg)));
+            opt.checkpoint?.(logs);
           },
         });
 
@@ -763,6 +764,7 @@ async function completion(logs, opt = {}) {
 
             logs.push(resultMsg);
             msgs.push(...arrayify(provMod.fmt(resultMsg)));
+            opt.checkpoint?.(logs);
           }
         }
       }
@@ -875,6 +877,7 @@ async function completion(logs, opt = {}) {
 
           logs.push(result);
           msgs.push(...arrayify(provMod.fmt(result)));
+          opt.checkpoint?.(logs);
         }
 
         continue;
