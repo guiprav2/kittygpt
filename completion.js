@@ -44,7 +44,8 @@ let providers = {
           return {
             type: 'reasoning',
             id: x.id,
-            summary: x.summary || []
+            summary: x.summary || [],
+            encrypted_content: x.encrypted_content,
           };
 
         default:
@@ -112,7 +113,8 @@ let providers = {
           return {
             type: 'reasoning',
             id: x.id,
-            summary: x.summary || []
+            summary: x.summary || [],
+            encrypted_content: x.encrypted_content,
           };
 
         default:
@@ -599,8 +601,8 @@ async function completion(logs, opt = {}) {
         store: false,
         stream: opt.stream ?? true,
         reasoning: opt.reasoning ? { ...opt.reasoning, callback: undefined } : undefined,
-        include: opt.reasoning ? ['reasoning', 'reasoning.encrypted_content'] : undefined,
-        modalities: opt.reasoning ? ['text', 'reasoning'] : undefined,
+        include: opt.reasoning ? ['reasoning.encrypted_content'] : undefined,
+        prompt_cache_key: opt.cid,
       };
 
       let headers = { 'Content-Type': 'application/json' };
@@ -719,6 +721,15 @@ async function completion(logs, opt = {}) {
         if (checkAbort()) return [logs, ...toolResults];
 
         let internal = provMod.defmt(item);
+
+        // Reasoning
+        if (internal.type === 'reasoning') {
+          internal.summary.filter(x => x.type === 'summary_text').forEach(x => opt.reasoning.callback?.('done', x.text));
+          delete internal.id;
+          logs.push(internal);
+          msgs.push(...arrayify(provMod.fmt(internal)));
+          continue;
+        }
 
         // Assistant message
         if (internal.type === 'message') {
