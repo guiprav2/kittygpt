@@ -1,6 +1,5 @@
-import path, { dirname } from "path";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
-import { mkdirSync } from "fs";
+import * as path from "path";
+import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from "fs";
 
 export default function applyPatch(
   patchText,
@@ -85,7 +84,7 @@ export default function applyPatch(
   // ------------------------------
 
   function ensureWrite(p, data) {
-    mkdirSync(dirname(p), { recursive: true });
+    mkdirSync(path.dirname(p), { recursive: true });
     writeFileSync(p, data, "utf8");
   }
 
