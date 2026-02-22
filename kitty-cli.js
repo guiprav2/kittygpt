@@ -32,6 +32,7 @@ program
   .option('--system <message...>', 'Add system message(s)')
   .option('--preamble <path...>', 'Preamble message files to load')
   .option('--tools <path...>', 'Tool modules to load')
+  .option('--manager <path>', 'Manager module to intercept completions')
   .option('--no-shell', 'Disable shell tool')
   .option('--no-meta', 'Disable meta-null tools')
   .option('--no-automedia', 'Disable automatic media URL expansion')
@@ -458,6 +459,15 @@ await Promise.all(opts.preamble?.map?.(async x => {
 let modtools = {};
 opts.tools && await Promise.all(opts.tools.map(async x => Object.assign(modtools, { ...await import(`${process.cwd()}/${x}`) })));
 
+let manager = null;
+if (opts.manager) {
+  let mod = await import(`${process.cwd()}/${opts.manager}`);
+  manager = mod?.default || mod;
+  if (typeof manager !== 'function') {
+    throw new Error(`Manager module must export a default function`);
+  }
+}
+
 /* --------------------------------------------------
  * Tool factory
  * -------------------------------------------------- */
@@ -514,12 +524,13 @@ function tools() {
             });
           });
         } catch (err) {
+          console.error(err);
           chunks.push(String(err));
         }
 
         let out = chunks.join('');
-        return out.length > 1024 * 1024
-          ? out.slice(0, 1024 * 1024) + ' [truncated]'
+        return out.length > 1024 * 128
+          ? out.slice(0, 1024 * 128) + ' [truncated]'
           : out;
       },
     };
@@ -674,7 +685,7 @@ while (true) {
 
   try {
     let textEmitted = false;
-    await completion(kittyst.logs, {
+    let completionOptions = {
       ...kittyst.options,
       instructions: kittyst.options.model.startsWith('oai:') && kittyst.options.instructions,
       preamble: () => preambles.map(x => typeof x === 'function' ? x() : x).flat(),
@@ -707,7 +718,23 @@ while (true) {
       },
       dbg: opts.dbg,
       signal: ac.signal,
-    });
+    };
+
+    let runner = manager
+      ? () => manager({
+          logs: kittyst.logs,
+          state: kittyst,
+          prompt: text,
+          options: completionOptions,
+          completion,
+          dispatch(innerLogs = kittyst.logs, overrides = {}) {
+            let merged = { ...completionOptions, ...overrides };
+            return completion(innerLogs, merged);
+          },
+        })
+      : () => completion(kittyst.logs, completionOptions);
+
+    await runner();
 
     if (opts.stream) console.log();
     else {
