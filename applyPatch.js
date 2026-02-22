@@ -35,7 +35,6 @@ export default function applyPatch(
       let filename = m[1].trim();
       let fullPath = path.join(baseDir, filename);
 
-      // Read existing or treat as empty file
       let original = existsSync(fullPath)
         ? readFileSync(fullPath, "utf8")
         : "";
@@ -54,6 +53,49 @@ export default function applyPatch(
       if (end !== "*** End Patch")
         throw new Error("Malformed patch: missing End Patch");
 
+      continue;
+    }
+
+    //
+    // ADD FILE
+    //
+    m = /^\*\*\* Add File: (.+)$/.exec(header);
+    if (m) {
+      let filename = m[1].trim();
+      let fullPath = path.join(baseDir, filename);
+
+      if (existsSync(fullPath)) {
+        if (strict) {
+          throw new Error(`File already exists: ${filename}`);
+        }
+      }
+
+      let content = [];
+
+      while (true) {
+        let l = nextLine();
+        if (l == null)
+          throw new Error("Malformed patch: missing End Patch");
+
+        if (l === "*** End Patch") break;
+
+        if (l.startsWith("+")) {
+          content.push(l.slice(1));
+        } else if (l.startsWith(" ")) {
+          // Allow context lines (rare but safe)
+          content.push(l.slice(1));
+        } else if (l.startsWith("-")) {
+          throw new Error(
+            `Invalid removal in Add File for ${filename}: ${l}`
+          );
+        } else {
+          throw new Error(
+            `Invalid line in Add File for ${filename}: ${l}`
+          );
+        }
+      }
+
+      ensureWrite(fullPath, content.join("\n"));
       continue;
     }
 
@@ -98,11 +140,8 @@ export default function applyPatch(
         break;
       }
 
-      if (line.trim() !== "@@") continue; // ChatGPT hunk header
+      if (line.trim() !== "@@") continue;
 
-      //
-      // Collect hunk lines
-      //
       let hunk = [];
       while (true) {
         let l = nextLine();
@@ -113,16 +152,10 @@ export default function applyPatch(
         hunk.push(l);
       }
 
-      //
-      // Find anchor
-      //
       let anchor = findHunkAnchor(out, hunk, strict);
       if (anchor < 0)
         throw new Error(`Unable to anchor hunk in ${filename}`);
 
-      //
-      // Apply operations at anchor
-      //
       let pos = anchor;
       for (let l of hunk) {
         if (l.startsWith(" ")) {
@@ -142,7 +175,6 @@ export default function applyPatch(
   }
 
   function findHunkAnchor(lines, hunk, strict) {
-    // find first stable line (context or removal)
     let key = null;
     for (let l of hunk) {
       if (l.startsWith(" ") || l.startsWith("-")) {
@@ -151,10 +183,8 @@ export default function applyPatch(
       }
     }
 
-    // If hunk has only additions
     if (key == null) return lines.length;
 
-    // Find all candidate lines
     let candidates = [];
     for (let i = 0; i < lines.length; i++) {
       if (lines[i] === key) candidates.push(i);
@@ -162,10 +192,9 @@ export default function applyPatch(
 
     if (candidates.length === 0) {
       if (strict) throw new Error(`Anchor not found for: "${key}"`);
-      return lines.length; // fuzzy mode: append at end
+      return lines.length;
     }
 
-    // Simple: choose first (same strategy as patch -F0)
     return candidates[0];
   }
 }
