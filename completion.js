@@ -243,37 +243,30 @@ let providers = {
 
   //
   // ============================================================
-  // xAI (Grok) — chat-completions compatible
+  // xAI (Grok) — Responses API compatible (parity with OpenAI)
   // ============================================================
   //
   xai: {
-    endpoint: 'https://api.x.ai/v1/chat/completions',
+    endpoint: 'https://api.x.ai/v1/responses',
     modelsEndpoint: 'https://api.x.ai/v1/models',
     key: globalThis.process?.env?.XAI_KEY,
 
+    // ----------------------------
+    // Internal → Provider (Responses API)
+    // ----------------------------
     fmt(x) {
       switch (x.type) {
         case 'message':
           return {
+            type: 'message',
             role: x.role,
-            content: x.content.map(c => this.fmtc(x.role, c)).filter(Boolean).join('\n\n')
+            content: x.content.flatMap(y => this.fmtc(x.role, y))
           };
 
-        case 'tool_call':
-          return {
-            role: 'assistant',
-            tool_calls: x.calls.map(tc => ({
-              id: tc.call,
-              type: 'function',
-              function: {
-                name: tc.name,
-                arguments: JSON.stringify(tc.args)
-              }
-            }))
-          };
+        case 'tool_call': return x.calls.map(y => ({ type: 'function_call', name: y.name, arguments: JSON.stringify(y.args), call_id: y.call }));
 
         case 'tool_call_result': {
-          const content =
+          let output =
             x.output == null
               ? 'OK'
               : typeof x.output === 'string'
@@ -281,61 +274,110 @@ let providers = {
                 : JSON.stringify(x.output);
 
           return {
-            role: 'tool',
-            tool_call_id: x.call,
-            content
+            type: 'function_call_output',
+            call_id: x.call,
+            output
           };
         }
+
+        case 'reasoning':
+          return {
+            type: 'reasoning',
+            id: x.id,
+            summary: x.summary || [],
+            encrypted_content: x.encrypted_content,
+          };
 
         default:
           throw new Error(`Unknown message type: ${x.type}`);
       }
     },
 
-    fmtc(_, x) {
-      if (typeof x === 'string') return x;
+    fmtc(role, x) {
+      if (typeof x === 'string') {
+        return [{
+          type: role === 'assistant' ? 'output_text' : 'input_text',
+          text: x
+        }];
+      }
 
       if (!Array.isArray(x)) {
         switch (x.type) {
-          case 'img': return null;
-          case 'json': return JSON.stringify(x.data);
+          case 'img':   return [{ type: 'input_image', image_url: x.url }];
+          case 'audio': return [{ type: 'input_audio', audio_url: x.url }];
+          case 'video': return [{ type: 'input_video', video_url: x.url }];
+          case 'json':  return [{ type: 'input_json', json: x.data }];
           default:
-            return `[${x.type} unsupported]`;
+            throw new Error(`Unknown content type: ${x.type}`);
         }
       }
 
-      return x.map(y => this.fmtc(_, y)).join('\n\n');
+      return x.flatMap(y => this.fmtc(role, y));
     },
 
+    // ----------------------------
+    // Provider → Internal (Responses API)
+    // ----------------------------
     defmt(x) {
-      if (x.tool_calls) {
-        return {
-          type: 'tool_call',
-          calls: x.tool_calls.map(tc => ({
-            name: tc.function.name,
-            call: tc.id,
-            args: JSON.parse(tc.function.arguments)
-          }))
-        };
+      switch (x.type || 'message') {
+        case 'message':
+          return {
+            type: 'message',
+            role: x.role,
+            content: x.content.map(this.defmtc)
+          };
+
+        case 'function_call':
+          return {
+            type: 'tool_call',
+            calls: [{
+              name: x.name,
+              call: x.call_id,
+              args: JSON.parse(x.arguments)
+            }]
+          };
+
+        case 'function_call_output': {
+          let output;
+          try { output = JSON.parse(x.output); }
+          catch { output = x.output; }
+
+          return {
+            type: 'tool_call_result',
+            call: x.call_id,
+            output
+          };
+        }
+
+        case 'reasoning':
+          return {
+            type: 'reasoning',
+            id: x.id,
+            summary: x.summary || [],
+            encrypted_content: x.encrypted_content,
+          };
+
+        default:
+          throw new Error(`Unknown message type: ${x.type}`);
       }
+    },
 
-      if (x.role === 'tool') {
-        let output;
-        try { output = JSON.parse(x.content); }
-        catch { output = x.content; }
-
-        return {
-          type: 'tool_call_result',
-          call: x.tool_call_id,
-          output
-        };
+    defmtc(x) {
+      switch (x.type) {
+        case 'input_text':
+        case 'output_text':
+          return x.text;
+        case 'input_image':
+          return { type: 'img', url: x.image_url };
+        case 'input_audio':
+          return { type: 'audio', url: x.audio_url };
+        case 'input_video':
+          return { type: 'video', url: x.video_url };
+        case 'input_json':
+          return { type: 'json', data: x.json };
+        default:
+          throw new Error(`Unknown content type: ${x.type}`);
       }
-
-      return {
-        type: 'message',
-        role: x.role,
-        content: [x.content]
-      };
     }
   }
 };
@@ -519,10 +561,10 @@ async function completion(logs, opt = {}) {
   let msgs = logs.flatMap(m => provMod.fmt(m)).filter(Boolean);
 
   // ---------------------------------------------
-  // OPENAI RESPONSES API
+  // RESPONSES API (OpenAI and xAI)
   // ---------------------------------------------
-  if (prov === 'oai') {
-    let key = opt.key || providers.oai.key;
+  if (prov === 'oai' || prov === 'xai') {
+    let key = opt.key || providers[prov].key;
 
     let toolChoice =
       !opt.call || /^(auto|required|none)$/.test(opt.call)
@@ -543,7 +585,7 @@ async function completion(logs, opt = {}) {
         handler: undefined
       }));
 
-      if (opt.automedia) {
+      if (prov === 'oai' && opt.automedia) {
         toolDefs.push({
           type: 'function',
           name: 'image_gen',
@@ -598,18 +640,18 @@ async function completion(logs, opt = {}) {
         tools: toolDefs.length ? toolDefs.map(t => ({ ...t, handler: undefined })) : undefined,
         tool_choice: toolDefs.length ? toolChoice : undefined,
         parallel_tool_calls: false,
-        store: false,
+        //store: false,
         stream: opt.stream ?? true,
         reasoning: opt.reasoning ? { ...opt.reasoning, callback: undefined } : undefined,
         include: opt.reasoning ? ['reasoning.encrypted_content'] : undefined,
-        prompt_cache_key: opt.cid,
+        //prompt_cache_key: opt.cid,
       };
 
       let headers = { 'Content-Type': 'application/json' };
       key && (headers['Authorization'] = `Bearer ${key}`);
-      opt.reasoning && Object.assign(headers, { 'OpenAI-Beta': 'responses=experimental', conversation_id: opt.cid, session_id: opt.cid });
+      //opt.reasoning && Object.assign(headers, { 'OpenAI-Beta': 'responses=experimental', conversation_id: opt.cid, session_id: opt.cid });
 
-      let res = await fetch(providers.oai.endpoint, {
+      let res = await fetch(providers[prov].endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -793,9 +835,9 @@ async function completion(logs, opt = {}) {
   }
 
   // ---------------------------------------------
-  // LEGACY PROVIDERS (oail / xai)
+  // LEGACY PROVIDERS (oail)
   // ---------------------------------------------
-  if (prov === 'oail' || prov === 'xai') {
+  if (prov === 'oail') {
     let cfg = providers[prov];
     let key = opt.key || cfg.key;
 
@@ -814,9 +856,10 @@ async function completion(logs, opt = {}) {
             }
           }));
 
+      let systemMsg = opt.instructions ? { role: 'system', content: opt.instructions } : null;
       let payload = {
         model: cmodel,
-        messages: [opt.instructions && { type: 'message', role: 'system', content: opt.instructions }, ...msgs].filter(Boolean),
+        messages: [systemMsg, ...msgs].filter(Boolean),
         tools,
         tool_choice: tools?.length ? opt.call || 'auto' : undefined,
         parallel_tool_calls: false,

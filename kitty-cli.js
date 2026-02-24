@@ -503,8 +503,13 @@ function tools() {
 
           if (file === 'apply_patch') {
             if (args.length !== 1) throw new Error(`apply_patch takes a single positional parameter`);
-            console.log('\n' + args[0]);
-            return applyPatch(args[0]);
+            let tmp = `/tmp/${Date.now()}.patch`;
+            fs.writeFileSync(tmp, args[0], 'utf8');
+            spawnSync(process.env.EDITOR || 'vim', tmp, { stdio: 'inherit' });
+            let patched = fs.readFileSync(tmp, 'utf8');
+            fs.unlinkSync(tmp);
+            if (!patched.trim()) return { success: false, error: `user rejected patch, ask what to do differently` };
+            return applyPatch(patched);
           }
 
           await new Promise(resolve => {
