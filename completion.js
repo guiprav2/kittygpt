@@ -445,10 +445,10 @@ async function bodystream(body, { text, reasoning, tool, img, audio }) {
       let { type } = payload;
 
       if (type === "response.output_text.delta")
-        text?.('delta', payload.delta);
+        await text?.('delta', payload.delta);
 
       else if (type === "response.output_text.done")
-        text?.('done', payload.text);
+        await text?.('done', payload.text);
 
       else if (type === "response.output_item.added") {
         if (payload.item?.type === "function_call") {
@@ -467,20 +467,11 @@ async function bodystream(body, { text, reasoning, tool, img, audio }) {
         delete pendingCalls[payload.item_id];
       }
 
-      else if (type === "response.output_image.done")
-        img?.('done', payload.image);
+      else if (type === "response.reasoning_summary_text.delta")
+        await reasoning?.('delta', payload.delta);
 
-      else if (type === "response.output_audio.delta")
-        audio?.('delta', payload.delta.audio);
-
-      else if (type === "response.output_audio.done")
-        audio?.('done', payload.audio);
-
-      else if (type === "response.output_text.reasoning.delta")
-        reasoning?.('delta', payload.delta);
-
-      else if (type === "response.output_text.reasoning.done")
-        reasoning?.('done', payload.text);
+      else if (type === "response.reasoning_summary_text.done")
+        await reasoning?.('done', payload.text);
     }
   }
 }
@@ -512,6 +503,7 @@ async function bodystreaml(body, cb) {
   }
   return finalMessage;
 }
+
 //
 // ============================================================
 // Main completion() with multi-call support
@@ -585,27 +577,6 @@ async function completion(logs, opt = {}) {
         handler: undefined
       }));
 
-      if (prov === 'oai' && opt.automedia) {
-        toolDefs.push({
-          type: 'function',
-          name: 'image_gen',
-          description: 'Generate an image from a text prompt',
-          parameters: {
-            type: 'object',
-            properties: {
-              prompt: { type: 'string' },
-              size: {
-                type: 'string',
-                enum: ['1024x1024', '1024x1536', '1536x1024', 'auto'],
-                default: 'auto'
-              },
-              n: { type: 'integer', default: 1 }
-            },
-            required: ['prompt']
-          },
-        });
-      }
-
       // Meta-null tool support
       if (opt.metanull) {
         toolDefs.push({
@@ -639,8 +610,7 @@ async function completion(logs, opt = {}) {
         instructions: opt.instructions || undefined,
         tools: toolDefs.length ? toolDefs.map(t => ({ ...t, handler: undefined })) : undefined,
         tool_choice: toolDefs.length ? toolChoice : undefined,
-        parallel_tool_calls: false,
-        //store: false,
+        parallel_tool_calls: true,
         stream: opt.stream ?? true,
         reasoning: opt.reasoning ? { ...opt.reasoning, callback: undefined } : undefined,
         include: opt.reasoning ? ['reasoning.encrypted_content'] : undefined,
@@ -650,13 +620,8 @@ async function completion(logs, opt = {}) {
       let headers = { 'Content-Type': 'application/json' };
       key && (headers['Authorization'] = `Bearer ${key}`);
       //opt.reasoning && Object.assign(headers, { 'OpenAI-Beta': 'responses=experimental', conversation_id: opt.cid, session_id: opt.cid });
-
-      let res = await fetch(providers[prov].endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        signal
-      });
+      opt.reasoning && Object.assign(headers, { 'OpenAI-Beta': 'responses=experimental', conversation_id: opt.cid, session_id: opt.cid });
+      let res = await fetch(providers[prov].endpoint, { method: 'POST', headers, body: JSON.stringify(payload), signal });
 
       // -----------------------------
       // STREAMING (Responses API)
@@ -675,15 +640,12 @@ async function completion(logs, opt = {}) {
             opt.text?.(kind, chunk);
           },
           reasoning: (kind, chunk) => {
+            if (kind === 'done') {
+              let reasoningMsg = { type: 'reasoning', summary: [{ type: 'summary_text', text: chunk }] };
+              logs.push(reasoningMsg);
+              msgs.push(...arrayify(provMod.fmt(reasoningMsg)));
+            }
             opt.reasoning?.callback?.(kind, chunk);
-          },
-          img: (kind, image) => {
-            assembled.push({ type: 'img', url: image.url });
-            opt.img?.(kind, image);
-          },
-          audio: (kind, audio) => {
-            assembled.push({ type: 'audio', data: audio });
-            opt.audio?.(kind, audio);
           },
           tool: async (_, call) => {
             let toolset = typeof opt.tools === 'function' ? opt.tools() : opt.tools;
@@ -696,31 +658,7 @@ async function completion(logs, opt = {}) {
             let output;
             try {
               if (defmt0.name === 'define_tool') {
-                output = await opt.metanull({
-                  meta: true,
-                  name: defmt0.args.tool_name,
-                  description: defmt0.args.tool_description,
-                  parameters: defmt0.args.parameters_schema,
-                });
-              } else if (defmt0.name === 'image_gen') {
-                let res = await fetch('https://api.openai.com/v1/images/generations', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${providers.oai.key}`
-                  },
-                  body: JSON.stringify({
-                    model: 'gpt-image-1',
-                    prompt: defmt0.args.prompt,
-                    size: defmt0.args.size,
-                    n: defmt0.args.n,
-                  })
-                });
-
-                let json = await res.json();
-                //console.log(json);
-                if (!json.data) throw new Error('Invalid image response');
-                output = json.data.map(x => x.url).join('\n');
+                output = await opt.metanull({ meta: true, name: defmt0.args.tool_name, description: defmt0.args.tool_description, parameters: defmt0.args.parameters_schema });
               } else if (toolset?.[defmt0.name]?.meta) {
                 output = await opt.metainvoke?.(defmt0.name, defmt0.args);
               } else {
@@ -732,13 +670,7 @@ async function completion(logs, opt = {}) {
 
             output ??= 'OK';
             toolResults.push({ name: defmt0.name, args: defmt0.args, output });
-
-            let resultMsg = {
-              type: 'tool_call_result',
-              call: defmt0.call,
-              output,
-            };
-
+            let resultMsg = { type: 'tool_call_result', call: defmt0.call, output };
             logs.push(resultMsg);
             msgs.push(...arrayify(provMod.fmt(resultMsg)));
             opt.checkpoint?.(logs);
@@ -746,7 +678,7 @@ async function completion(logs, opt = {}) {
         });
 
         if (assembled.length) {
-          let assistantMsg = { type: 'message', role: 'assistant', content: assembled };
+          let assistantMsg = { type: 'message', role: 'assistant', content: [assembled.join('')] };
           logs.push(assistantMsg);
           msgs.push(...arrayify(provMod.fmt(assistantMsg)));
         }
@@ -768,13 +700,6 @@ async function completion(logs, opt = {}) {
         if (internal.type === 'reasoning') {
           internal.summary.filter(x => x.type === 'summary_text').forEach(x => opt.reasoning.callback?.('done', x.text));
           delete internal.id;
-          logs.push(internal);
-          msgs.push(...arrayify(provMod.fmt(internal)));
-          continue;
-        }
-
-        // Assistant message
-        if (internal.type === 'message') {
           logs.push(internal);
           msgs.push(...arrayify(provMod.fmt(internal)));
           continue;
@@ -822,6 +747,14 @@ async function completion(logs, opt = {}) {
             msgs.push(...arrayify(provMod.fmt(resultMsg)));
             opt.checkpoint?.(logs);
           }
+        }
+
+        // Assistant message
+        if (internal.type === 'message') {
+          logs.push(internal);
+          msgs.push(...arrayify(provMod.fmt(internal)));
+          opt.text?.('done', internal.content);
+          continue;
         }
       }
 

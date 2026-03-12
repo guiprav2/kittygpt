@@ -6,8 +6,8 @@ import os from 'os';
 import path from 'path';
 import readline from 'readline';
 import { Command } from 'commander';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { spawn } from 'child_process';
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { spawn, spawnSync } from 'child_process';
 import { stdin as input, stdout as output } from 'process';
 
 const env = path.join(os.homedir(), '.kittygpt', '.env');
@@ -68,6 +68,7 @@ kittyst ??= {
   },
   metatools: {},
   logs: [],
+  memory: {},
 };
 
 if (opts.stream && !kittyst.options.model.startsWith('oai:')) {
@@ -448,7 +449,7 @@ if (opts.system) {
   }
 }
 
-let preambles = [];
+let preambles = [{ role: 'system', content: [`Thread memory: ${JSON.stringify(kittyst.memory)}`] }];
 await Promise.all(opts.preamble?.map?.(async x => {
   if (x.endsWith('.js')) return preambles.push((await import(`${process.cwd()}/${x}`)).default);
   let fstr = readFileSync(x, { encoding: 'utf8' });
@@ -504,10 +505,10 @@ function tools() {
           if (file === 'apply_patch') {
             if (args.length !== 1) throw new Error(`apply_patch takes a single positional parameter`);
             let tmp = `/tmp/${Date.now()}.patch`;
-            fs.writeFileSync(tmp, args[0], 'utf8');
-            spawnSync(process.env.EDITOR || 'vim', tmp, { stdio: 'inherit' });
-            let patched = fs.readFileSync(tmp, 'utf8');
-            fs.unlinkSync(tmp);
+            writeFileSync(tmp, args[0], 'utf8');
+            spawnSync(process.env.EDITOR || 'vim', [tmp], { stdio: 'inherit' });
+            let patched = readFileSync(tmp, 'utf8');
+            unlinkSync(tmp);
             if (!patched.trim()) return { success: false, error: `user rejected patch, ask what to do differently` };
             return applyPatch(patched);
           }
