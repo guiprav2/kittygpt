@@ -40,9 +40,12 @@ export async function runTools(calls, toolset, opts) {
 export async function spawnAgent({ prompt, instructions, model }, parentOpts) {
   parentOpts.subagent?.(prompt);
   let subLogs = [{ type: 'message', role: 'user', content: [prompt] }];
+  let resolvedModel = !model ? parentOpts.model
+    : model.includes(':') ? model
+    : parentOpts.model.split(':')[0] + ':' + model;
   let [resultLogs] = await run(subLogs, {
     ...parentOpts,
-    model: model || parentOpts.model,
+    model: resolvedModel,
     instructions: instructions !== undefined ? instructions : parentOpts.instructions,
     subagent: undefined,
   });

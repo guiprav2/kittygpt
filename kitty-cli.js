@@ -38,6 +38,7 @@ program
   .option('--no-automedia', 'Disable automatic media URL expansion')
   .option('--no-stream', 'Disables streaming')
   .option('--no-plan', 'Disable planning tool')
+  .option('--no-subagents', 'Disable subagent support')
   .option('--pipe', 'Enables shell piping mode')
   .option('--dbg', 'Debug output')
   .parse(process.argv);
@@ -71,10 +72,8 @@ kittyst ??= {
   memory: {},
 };
 
-if (opts.stream && !kittyst.options.model.startsWith('oai:')) {
-  console.error(`Legacy OpenAI and xAI models don't support streaming with tools.`);
-  process.exit(1);
-}
+if (opts.stream && kittyst.options.model.startsWith('oail:'))
+  console.warn(`oail doesn't support streaming with tools; will downgrade automatically.`);
 
 /* --------------------------------------------------
  * Apply CLI overrides
@@ -707,6 +706,14 @@ while (true) {
         callback: (kind, x) => opts.dbg && kind === 'done' && (!opts.pipe ? console.log(`\n🤖 REASONING:`, x) : console.log(x)),
       },
       stream: opts.stream,
+      narration: text => {
+        process.stdout.write('\n\x1b[2m' + text + '\x1b[0m\n');
+      },
+      subagent: prompt => {
+        let preview = prompt.slice(0, 60).replace(/\n/g, ' ');
+        process.stdout.write('\n\x1b[2m↳ subagent: ' + preview + '…\x1b[0m\n');
+      },
+      subagents: opts.subagents,
       text: (kind, x) => {
         if (kind !== 'delta') return;
         !textEmitted && console.log();
