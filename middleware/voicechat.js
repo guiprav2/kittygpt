@@ -7,7 +7,7 @@ async function midvoicechat(req, res) {
     let { model, voice } = req.query;
     if (!model) return res.status(400).send(`Missing model query`); // FIXME: Consolidate both
     if (!voice) return res.status(400).send(`Missing voice query`);
-    let sr = await fetch(process.env.OPENAI_API_VOICECHAT_ENDPOINT, {
+    let sr = await fetch(process.env.OPENAI_API_REALTIME_ENDPOINT, {
       method: 'POST',
       headers: { 'Authorization': bearer, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, voice })
