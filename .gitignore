@@ -4,3 +4,4 @@
 .netlify
 node_modules
 test-results
+.worktrees
