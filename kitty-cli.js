@@ -709,9 +709,9 @@ while (true) {
       narration: text => {
         process.stdout.write('\n\x1b[2m' + text + '\x1b[0m\n');
       },
-      subagent: prompt => {
-        let preview = prompt.slice(0, 60).replace(/\n/g, ' ');
-        process.stdout.write('\n\x1b[2m↳ subagent: ' + preview + '…\x1b[0m\n');
+      subagent: (description, name) => {
+        let preview = description.slice(0, 60).replace(/\n/g, ' ');
+        process.stdout.write('\n\x1b[2m↳ ' + name + ': ' + preview + '…\x1b[0m\n');
       },
       subagents: opts.subagents,
       text: (kind, x) => {

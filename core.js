@@ -37,8 +37,8 @@ export async function runTools(calls, toolset, opts) {
   return Promise.all(calls.map(execute));
 }
 
-export async function spawnAgent({ prompt, instructions, model }, parentOpts) {
-  parentOpts.subagent?.(prompt);
+export async function spawnAgent({ name, description, prompt, instructions, model }, parentOpts) {
+  parentOpts.subagent?.(description || prompt, name);
   let subLogs = [{ type: 'message', role: 'user', content: [prompt] }];
   let resolvedModel = !model ? parentOpts.model
     : model.includes(':') ? model
@@ -48,6 +48,9 @@ export async function spawnAgent({ prompt, instructions, model }, parentOpts) {
     model: resolvedModel,
     instructions: instructions !== undefined ? instructions : parentOpts.instructions,
     subagent: undefined,
+    text: undefined,
+    img: undefined,
+    narration: text => parentOpts.narration?.('\x1b[2m[' + name + ']\x1b[0m ' + text),
   });
   let last = resultLogs.at(-1);
   return last?.content?.join?.('\n') || 'No response';

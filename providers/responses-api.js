@@ -8,11 +8,13 @@ let spawnAgentSchema = {
   parameters: {
     type: 'object',
     properties: {
+      name: { type: 'string', description: 'Short identifier for this sub-agent (shown in progress output)' },
+      description: { type: 'string', description: 'One-line summary of what this sub-agent will do (shown in progress output)' },
       prompt: { type: 'string', description: 'The task for the sub-agent' },
       instructions: { type: 'string', description: 'System instructions (optional, defaults to parent)' },
       model: { type: 'string', description: 'Model override (optional, defaults to parent)' },
     },
-    required: ['prompt'],
+    required: ['name', 'description', 'prompt'],
   },
 };
 
