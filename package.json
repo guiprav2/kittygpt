@@ -1,6 +1,6 @@
 {
   "name": "@camilaprav/kittygpt",
-  "version": "0.0.72",
+  "version": "0.0.73",
   "description": "A friendly, minimalist, fully-featured ChatGPT completion library",
   "main": "completion.js",
   "type": "module",
@@ -21,11 +21,9 @@
   "dependencies": {
     "commander": "^14.0.2",
     "dotenv": "^16.6.1",
-    "mic": "^2.1.2",
     "mrmime": "^2.0.1",
-    "speaker": "^0.5.5",
+    "openai": "^6.37.0",
     "typescript": "^5.9.3",
-    "wrtc": "^0.4.7",
     "ws": "^8.18.3"
   },
   "devDependencies": {
