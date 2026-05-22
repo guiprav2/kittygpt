@@ -14,7 +14,7 @@
     document.querySelector('#start').onclick = async ev => {
       ev.target.disabled = true;
       let session = await voicechat({ transcript: x => transcript += x });
-      session.prompt(`Literally say the word "hello". Keep it short.`);
+      session.inject(`Literally say the word "hello". Keep it short.`);
       session.events.on('output_audio_buffer.stopped', () => done = true);
     };
   </script>

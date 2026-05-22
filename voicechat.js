@@ -1,32 +1,24 @@
-let isBrowser =
-  typeof window !== 'undefined' && typeof navigator !== 'undefined';
+let isBrowser = typeof window !== 'undefined' && typeof navigator !== 'undefined';
+
 async function createBackend(debug) {
-  return isBrowser
-    ? await createBrowserBackend(debug)
-    : await createNodeBackend(debug);
+  return isBrowser ? createBrowserBackend(debug) : createNodeBackend(debug);
 }
 
 async function createBrowserBackend() {
   let EventEmitter = (await import('https://esm.sh/event-emitter')).default;
-  let RTCPeerConnection = window.RTCPeerConnection;
   let pc = new RTCPeerConnection();
   let audio = new Audio();
   audio.autoplay = true;
   let stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   stream.getAudioTracks().forEach(track => pc.addTrack(track, stream));
   let attachSpeaker = track => {
-    if (!audio.srcObject) {
-      let remoteStream = new MediaStream([track]);
-      audio.srcObject = remoteStream;
-    }
+    if (!audio.srcObject) audio.srcObject = new MediaStream([track]);
   };
   return {
-    EventEmitter,
-    pc,
-    attachSpeaker,
+    EventEmitter, pc, attachSpeaker,
     stop: () => {
-      stream.getTracks().forEach(track => track.stop());
-      pc.getSenders().forEach(sender => pc.removeTrack(sender));
+      stream.getTracks().forEach(t => t.stop());
+      pc.getSenders().forEach(s => pc.removeTrack(s));
       pc.close();
       audio.srcObject = null;
     },
@@ -35,105 +27,74 @@ async function createBrowserBackend() {
 
 async function createNodeBackend(debug = false) {
   let EventEmitter = (await import('events')).default;
-  const wrtc = (await import('wrtc')).default;
-  const { RTCPeerConnection, nonstandard } = wrtc;
-  const { RTCAudioSource, RTCAudioSink } = nonstandard;
-  const Speaker = (await import('speaker')).default;
-  const mic = (await import('mic')).default;
+  let { RTCPeerConnection, nonstandard } = (await import('@roamhq/wrtc')).default;
+  let { RTCAudioSource, RTCAudioSink } = nonstandard;
+  let Speaker = (await import('speaker')).default;
+  let mic = (await import('mic')).default;
 
-  const pc = new RTCPeerConnection();
-  const source = new RTCAudioSource();
-  const track = source.createTrack();
+  let pc = new RTCPeerConnection();
+  let source = new RTCAudioSource();
+  let track = source.createTrack();
   pc.addTrack(track);
 
-  const micInstance = mic({
-    rate: '16000',
-    channels: '1',
-    debug: false,
-    device: 'default',
-  });
-  const micStream = micInstance.getAudioStream();
+  let micInstance = mic({ rate: '16000', channels: '1', debug: false, device: 'default' });
+  let micStream = micInstance.getAudioStream();
   micInstance.start();
   let micBuffer = Buffer.alloc(0);
 
   micStream.on('data', chunk => {
     micBuffer = Buffer.concat([micBuffer, chunk]);
     while (micBuffer.length >= 320) {
-      const frame = micBuffer.slice(0, 320);
+      let frame = micBuffer.slice(0, 320);
       micBuffer = micBuffer.slice(320);
-      const realBuffer = Buffer.alloc(320);
-      frame.copy(realBuffer);
-      source.onData({
-        samples: realBuffer,
-        sampleRate: 16000,
-        bitsPerSample: 16,
-        channelCount: 1,
-        numberOfFrames: 160,
-      });
+      let buf = Buffer.alloc(320);
+      frame.copy(buf);
+      source.onData({ samples: buf, sampleRate: 16000, bitsPerSample: 16, channelCount: 1, numberOfFrames: 160 });
     }
   });
 
   let sink = null;
   let speaker = null;
+  let knownRates = [48000, 44100, 32000, 24000, 16000];
 
-  const attachSpeaker = track => {
-    sink = new RTCAudioSink(track);
-    const knownRates = [48000, 44100, 32000, 24000, 16000];
-
+  let attachSpeaker = t => {
+    sink = new RTCAudioSink(t);
     sink.ondata = ({ samples }) => {
       if (samples.length < 480) return;
       if (!speaker) {
-        const match = knownRates.find(rate =>
-          [0.01, 0.02, 0.03, 0.04].some(
-            d => Math.round(rate * d) === samples.length,
-          ),
-        );
-        if (!match) {
-          throw new Error(
-            `Unable to determine sample rate from samples.length = ${samples.length}`,
-          );
-        }
-        debug &&
-          console.log('📐 Speaker initialized. Detected sampleRate:', match);
-        speaker = new Speaker({
-          channels: 1,
-          bitDepth: 16,
-          sampleRate: match,
-          signed: true,
-        });
+        let match = knownRates.find(rate => [0.01, 0.02, 0.03, 0.04].some(d => Math.round(rate * d) === samples.length));
+        if (!match) throw new Error(`Unable to determine sample rate from samples.length = ${samples.length}`);
+        debug && console.log('📐 Speaker initialized. Detected sampleRate:', match);
+        speaker = new Speaker({ channels: 1, bitDepth: 16, sampleRate: match, signed: true });
       }
-      const buffer = Buffer.from(samples.buffer);
-      speaker.write(buffer);
+      speaker.write(Buffer.from(samples.buffer));
     };
-
-    return sink;
   };
 
-  const stop = () => {
-    try {
-      sink?.stop?.();
-      sink?.removeAllListeners?.();
-    } catch (e) {
-      console.warn('Failed to stop sink cleanly:', e);
-    }
-
-    try {
-      micStream?.removeAllListeners?.('data');
-    } catch (e) {}
-
-    try {
-      speaker?.end?.();
-    } catch (e) {}
-
-    try {
-      pc.getSenders().forEach(s => pc.removeTrack(s));
-      pc.close();
-    } catch (e) {}
-
-    return micInstance.stop(); // trusted behavior
+  let stop = () => {
+    try { sink?.stop?.(); sink?.removeAllListeners?.(); } catch {}
+    try { micStream?.removeAllListeners?.('data'); } catch {}
+    try { speaker?.end?.(); } catch {}
+    try { pc.getSenders().forEach(s => pc.removeTrack(s)); pc.close(); } catch {}
+    return micInstance.stop();
   };
 
   return { EventEmitter, pc, attachSpeaker, stop };
+}
+
+function buildSessionConfig(model, voice, opts = {}) {
+  let isTranslate = model.includes('translate');
+  let isWhisper = model.includes('whisper');
+
+  let session = {
+    type: isTranslate ? 'translation' : isWhisper ? 'transcription' : 'realtime',
+  };
+
+  if (!isWhisper && !isTranslate && voice) session.voice = voice;
+  if (opts.reasoning) session.reasoning = opts.reasoning;
+  if (opts.targetLanguage) session.target_language = opts.targetLanguage;
+
+  return session;
 }
 
 export async function voicechat({
@@ -142,8 +103,15 @@ export async function voicechat({
   voice,
   transcript,
   debug = false,
+  reasoning,
+  targetLanguage,
 } = {}) {
-  let url = `${endpoint || voicechat.defaultEndpoint}?model=${model || voicechat.defaultModel}&voice=${voice || voicechat.defaultVoice}`;
+  let resolvedModel = model || voicechat.defaultModel;
+  let resolvedVoice = voice || voicechat.defaultVoice;
+  let isTranslate = resolvedModel.includes('translate');
+
+  let url = `${endpoint || voicechat.defaultEndpoint}?model=${resolvedModel}` +
+    (!resolvedModel.includes('whisper') && !isTranslate ? `&voice=${resolvedVoice}` : '');
   let session = await (await fetch(url)).json();
   let token = session.client_secret?.value || session.client_secret;
   if (!token) throw new Error('Invalid session token');
@@ -152,6 +120,28 @@ export async function voicechat({
   let events = new EventEmitter();
   let smap = {};
   let fns = {};
+
+  let offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  let sessionConfig = buildSessionConfig(resolvedModel, resolvedVoice, { reasoning, targetLanguage });
+  let sdpEndpoint = isTranslate
+    ? 'https://api.openai.com/v1/realtime/translations'
+    : 'https://api.openai.com/v1/realtime/calls';
+
+  let formData = new FormData();
+  formData.append('sdp', new Blob([offer.sdp], { type: 'application/sdp' }));
+  formData.append('session', new Blob([JSON.stringify(sessionConfig)], { type: 'application/json' }));
+
+  let sdpRes = await fetch(sdpEndpoint, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: formData,
+  });
+
+  let answer = { type: 'answer', sdp: await sdpRes.text() };
+  await pc.setRemoteDescription(answer);
+
   let dc = pc.createDataChannel('oai-events');
 
   let sysupdate = (kvs, newFns, merge = true) => {
@@ -161,140 +151,32 @@ export async function voicechat({
       else smap[k] = v;
     }
     if (newFns) fns = merge ? { ...fns, ...newFns } : newFns;
-    for (let [k, v] of Object.entries(fns)) {
-      if (!v) delete fns[k];
-    }
+    for (let [k, v] of Object.entries(fns)) { if (!v) delete fns[k]; }
+
     if (dc.readyState === 'open') {
       let tools = Object.keys(fns).map(name => ({
-        name,
-        type: 'function',
+        name, type: 'function',
         description: fns[name].description || 'No description',
         parameters: fns[name].parameters || {},
       }));
-      dc.send(
-        JSON.stringify({
-          type: 'session.update',
-          session: {
-            instructions: Object.entries(smap)
-              .map(([k, v]) => `${k}: ${v}`)
-              .join('\n'),
-            tools,
-            tool_choice: 'auto',
-          },
-        }),
-      );
+      dc.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          instructions: Object.entries(smap).map(([k, v]) => `${k}: ${v}`).join('\n'),
+          audio: { output: {} },
+          tools,
+          tool_choice: 'auto',
+        },
+      }));
     }
   };
 
-  async function prompt(text, polite) {
-    if (!globalThis.meSpeak) throw new Error(`meSpeak dependency not loaded`);
-
-    const context = new AudioContext();
-
-    // 1. Get fresh mic stream
-    const micStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-    });
-    const micSource = context.createMediaStreamSource(micStream);
-
-    // 2. Generate meSpeak WAV and decode it
-    const p = Promise.withResolvers();
-    meSpeak.speak(text, {
-      speed: 200,
-      rawdata: 'buffer',
-      callback: (success, id, wav) => {
-        if (!success) return p.reject(new Error(`meSpeak failure`));
-        p.resolve(wav);
-      },
-    });
-    const wav = await p.promise;
-    const audioBuffer = await context.decodeAudioData(wav);
-
-    // 3. Create fresh synthSource
-    const synthSource = context.createBufferSource();
-    synthSource.buffer = audioBuffer;
-
-    // 4. Mix mic + synth into a shared destination
-    const dest = context.createMediaStreamDestination();
-    micSource.connect(dest);
-    synthSource.connect(dest);
-
-    // 5. Inject mixed track into outgoing peer connection
-    const mixedTrack = dest.stream.getAudioTracks()[0];
-    const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
-    if (!sender) {
-      console.warn('No audio sender found.');
-      return;
-    }
-    await sender.replaceTrack(mixedTrack);
-
-    let monitorStop = null;
-    let synthStoppedManually = false;
-
-    // 6. Start synthSource exactly once
-    synthSource.start();
-
-    // 7. Mic noise monitoring
-    if (polite) {
-      monitorStop = monitorMicNoise(context, micStream, async () => {
-        debug && console.log('🤫 Mic noise detected during TTS, stopping early.');
-        if (!synthStoppedManually) {
-          synthStoppedManually = true;
-          synthSource.stop(); // triggers onended
-        }
-      });
-    }
-
-    // 8. When TTS ends
-    synthSource.onended = async () => {
-      if (monitorStop) monitorStop();
-      const freshStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      const micTrack = freshStream.getAudioTracks()[0];
-      if (micTrack && sender) {
-        await sender.replaceTrack(micTrack);
-      }
-      context.close(); // Always clean up your audio context
-    };
-  }
-
-  // Monitor mic noise with fresh micSource
-  function monitorMicNoise(
-    audioContext,
-    micStream,
-    onNoiseDetected,
-    threshold = 0.4,
-  ) {
-    const micSource = audioContext.createMediaStreamSource(micStream);
-    const analyser = audioContext.createAnalyser();
-    micSource.connect(analyser);
-    analyser.fftSize = 512;
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    let stopped = false;
-
-    function check() {
-      if (stopped) return;
-      analyser.getByteFrequencyData(dataArray);
-      const average =
-        dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
-      const normalized = average / 255;
-      if (normalized > threshold) {
-        stopped = true;
-        onNoiseDetected();
-      } else {
-        requestAnimationFrame(check);
-      }
-    }
-
-    check();
-
-    return () => {
-      stopped = true;
-      micSource.disconnect(analyser);
-      analyser.disconnect();
-      micStream.getTracks().forEach(t => t.stop());
-    };
+  function inject(text) {
+    dc.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] },
+    }));
+    dc.send(JSON.stringify({ type: 'response.create' }));
   }
 
   pc.ontrack = e => {
@@ -303,49 +185,32 @@ export async function voicechat({
     attachSpeaker?.(track);
   };
 
-  dc.onopen = () => {
-    debug && console.log('📱 DataChannel open');
-    sysupdate();
-  };
+  dc.onopen = () => debug && console.log('📱 DataChannel open');
 
   dc.onmessage = async event => {
     try {
       let msg = JSON.parse(event.data);
       events.emit(msg.type, msg);
+
       if (msg.type === 'response.audio_transcript.delta') transcript?.(msg.delta);
-      if (
-        msg.type === 'response.function_call_arguments.done' &&
-        msg.name in fns
-      ) {
+
+      if (msg.type === 'response.function_call_arguments.done' && msg.name in fns) {
         let { call_id, arguments: argsJSON } = msg;
         try {
           let args = JSON.parse(argsJSON);
-          let handler = fns[msg.name].handler;
-          let result = await Promise.resolve(handler(args));
+          let result = await Promise.resolve(fns[msg.name].handler(args));
           let respond = (result?.respond === undefined ? fns[msg.name].respond : result.respond) ?? true;
           if (result) delete result.respond;
-          dc.send(
-            JSON.stringify({
-              type: 'conversation.item.create',
-              item: {
-                type: 'function_call_output',
-                call_id,
-                output: JSON.stringify(result ?? { success: true }),
-              },
-            }),
-          );
+          dc.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: { type: 'function_call_output', call_id, output: JSON.stringify(result ?? { success: true }) },
+          }));
           respond && dc.send(JSON.stringify({ type: 'response.create' }));
         } catch (e) {
-          dc.send(
-            JSON.stringify({
-              type: 'conversation.item.create',
-              item: {
-                type: 'function_call_output',
-                call_id,
-                output: JSON.stringify({ success: false, error: e.message }),
-              },
-            }),
-          );
+          dc.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: { type: 'function_call_output', call_id, output: JSON.stringify({ success: false, error: e.message }) },
+          }));
           dc.send(JSON.stringify({ type: 'response.create' }));
           console.error(e);
         }
@@ -356,45 +221,27 @@ export async function voicechat({
     }
   };
 
-  let offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  let sdpRes = await fetch('https://api.openai.com/v1/realtime', {
-    method: 'POST',
-    headers: {
-      Authorization: 'Bearer ' + token,
-      'Content-Type': 'application/sdp',
-    },
-    body: offer.sdp,
-  });
-
-  let answer = { type: 'answer', sdp: await sdpRes.text() };
-  await pc.setRemoteDescription(answer);
-
   debug && console.log('✅ Voice session started');
 
   let micTrack = null;
-  try {
-    micTrack = pc.getSenders().find(s => s.track?.kind === 'audio')?.track || null;
-  } catch {}
-  const pauseListening = () => {
+  let pauseListening = () => {
     try {
       micTrack ??= pc.getSenders().find(s => s.track?.kind === 'audio')?.track;
       if (micTrack) micTrack.enabled = false;
     } catch {}
   };
-  const resumeListening = () => {
+  let resumeListening = () => {
     try {
       micTrack ??= pc.getSenders().find(s => s.track?.kind === 'audio')?.track;
       if (micTrack) micTrack.enabled = true;
     } catch {}
   };
 
-  return { events, stop, sysupdate, pauseListening, resumeListening, prompt };
+  return { events, stop, sysupdate, inject, pauseListening, resumeListening };
 }
 
 voicechat.defaultEndpoint = '/voicechat';
-voicechat.defaultModel = 'gpt-4o-realtime-preview';
-voicechat.defaultVoice = 'alloy';
+voicechat.defaultModel = 'gpt-realtime-2';
+voicechat.defaultVoice = 'cedar';
 
 export default voicechat;
