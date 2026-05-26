@@ -117,7 +117,7 @@ export async function run(logs, opts = {}) {
     let payload = provider.buildPayload(msgs, opts.preamble, { ...resolvedOpts, stream: useStream });
     let headers = provider.buildHeaders(resolvedOpts);
 
-    let res = await fetch(provider.endpoint, { method: 'POST', headers, body: JSON.stringify(payload), signal });
+    let res = await fetch(opts.endpoint || provider.endpoint, { method: 'POST', headers, body: JSON.stringify(payload), signal });
 
     // ── Streaming path ─────────────────────────────────────────
     if (useStream && !res.headers.get('content-type')?.startsWith?.('application/json')) {

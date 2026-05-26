@@ -7,7 +7,11 @@ async function midcompletion(req, res) {
     let skey = process.env.OPENAI_API_KEY;
     let bearer = ckey || (skey ? `Bearer ${skey}` : null);
     if (!bearer) return res.status(401).json({ error: 'No API key provided' });
-    let cr = await fetch(process.env.OPENAI_API_COMPLETIONS_ENDPOINT, {
+    let upstream = req.body?.messages
+      ? process.env.OPENAI_API_COMPLETIONS_ENDPOINT
+      : process.env.OPENAI_API_RESPONSES_ENDPOINT;
+    if (!upstream) return res.status(500).json({ error: 'No upstream endpoint configured' });
+    let cr = await fetch(upstream, {
       method: 'POST',
       headers: {
         Authorization: bearer,
