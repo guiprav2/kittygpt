@@ -1,8 +1,10 @@
 // core.js
-import { lookup as mimeLookup } from 'mrmime';
 import oai from './providers/oai.js';
 import xai from './providers/xai.js';
 import oail from './providers/oail.js';
+let { lookup: mimeLookup } = await (typeof process !== 'undefined' && process.versions?.node
+  ? import('mrmime')
+  : import('https://esm.sh/mrmime'));
 
 let arrayify = x => Array.isArray(x) ? x : [x];
 
