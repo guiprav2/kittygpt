@@ -12,7 +12,11 @@ async function createBrowserBackend() {
   let stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   stream.getAudioTracks().forEach(track => pc.addTrack(track, stream));
   let attachSpeaker = track => {
-    if (!audio.srcObject) audio.srcObject = new MediaStream([track]);
+    console.log('[voicechat] attachSpeaker:', track.kind, track.readyState);
+    if (!audio.srcObject) {
+      audio.srcObject = new MediaStream([track]);
+      audio.play().catch(e => console.error('[voicechat] audio.play() failed:', e));
+    }
   };
   return {
     EventEmitter, pc, attachSpeaker,
@@ -88,9 +92,9 @@ function buildSessionConfig(model, voice, opts = {}) {
 
   let session = {
     type: isTranslate ? 'translation' : isWhisper ? 'transcription' : 'realtime',
+    model,
   };
 
-  if (!isWhisper && !isTranslate && voice) session.voice = voice;
   if (opts.reasoning) session.reasoning = opts.reasoning;
   if (opts.targetLanguage) session.target_language = opts.targetLanguage;
 
@@ -110,39 +114,43 @@ export async function voicechat({
   let resolvedVoice = voice || voicechat.defaultVoice;
   let isTranslate = resolvedModel.includes('translate');
 
+  let isWhisper = resolvedModel.includes('whisper');
   let url = `${endpoint || voicechat.defaultEndpoint}?model=${resolvedModel}` +
-    (!resolvedModel.includes('whisper') && !isTranslate ? `&voice=${resolvedVoice}` : '');
+    (!isWhisper && !isTranslate ? `&voice=${resolvedVoice}` : '');
   let session = await (await fetch(url)).json();
-  let token = session.client_secret?.value || session.client_secret;
-  if (!token) throw new Error('Invalid session token');
+  let token = session.client_secret?.value || session.client_secret || session.value;
+  if (!token) throw new Error(`Invalid session token: ${JSON.stringify(session)}`);
 
   let { EventEmitter, pc, attachSpeaker, stop } = await createBackend(debug);
   let events = new EventEmitter();
   let smap = {};
   let fns = {};
 
+  pc.ontrack = e => {
+    console.log('[voicechat] ontrack:', e.track.kind, e.track.readyState);
+    attachSpeaker?.(e.track);
+  };
+
+  let dc = pc.createDataChannel('oai-events');
+
   let offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  let sessionConfig = buildSessionConfig(resolvedModel, resolvedVoice, { reasoning, targetLanguage });
   let sdpEndpoint = isTranslate
     ? 'https://api.openai.com/v1/realtime/translations'
     : 'https://api.openai.com/v1/realtime/calls';
 
-  let formData = new FormData();
-  formData.append('sdp', new Blob([offer.sdp], { type: 'application/sdp' }));
-  formData.append('session', new Blob([JSON.stringify(sessionConfig)], { type: 'application/json' }));
-
-  let sdpRes = await fetch(sdpEndpoint, {
+  let sdpRes = await fetch(`${sdpEndpoint}?model=${resolvedModel}`, {
     method: 'POST',
-    headers: { Authorization: 'Bearer ' + token },
-    body: formData,
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/sdp' },
+    body: offer.sdp,
   });
 
-  let answer = { type: 'answer', sdp: await sdpRes.text() };
-  await pc.setRemoteDescription(answer);
+  let sdpText = await sdpRes.text();
+  console.log('[voicechat] SDP response status:', sdpRes.status, '| body[:200]:', sdpText.slice(0, 200));
 
-  let dc = pc.createDataChannel('oai-events');
+  let answer = { type: 'answer', sdp: sdpText };
+  await pc.setRemoteDescription(answer);
 
   let sysupdate = (kvs, newFns, merge = true) => {
     kvs ??= {};
@@ -163,7 +171,6 @@ export async function voicechat({
         type: 'session.update',
         session: {
           instructions: Object.entries(smap).map(([k, v]) => `${k}: ${v}`).join('\n'),
-          audio: { output: {} },
           tools,
           tool_choice: 'auto',
         },
@@ -179,17 +186,12 @@ export async function voicechat({
     dc.send(JSON.stringify({ type: 'response.create' }));
   }
 
-  pc.ontrack = e => {
-    let [track] = e.streams[0].getAudioTracks();
-    debug && console.log('🎧 Got track:', track.id);
-    attachSpeaker?.(track);
-  };
-
-  dc.onopen = () => debug && console.log('📱 DataChannel open');
+  dc.onopen = () => console.log('[voicechat] DataChannel open');
 
   dc.onmessage = async event => {
     try {
       let msg = JSON.parse(event.data);
+      console.log('[voicechat] DC event:', msg.type);
       events.emit(msg.type, msg);
 
       if (msg.type === 'response.audio_transcript.delta') transcript?.(msg.delta);

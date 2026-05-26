@@ -8,7 +8,8 @@
   "license": "GPL-v3.0+",
   "scripts": {
     "test": "playwright test",
-    "node-test": "node --env-file=.env node-test.js"
+    "node-test": "node --env-file=.env node-test.js",
+    "deploy": "rm -rf public && mkdir public && cp -r providers components controllers pages media webfoundry public/ && cp index.html completion.js autoassist.js voicechat.js bimap.js core.js wf.config.js wf.uiconfig.json public/ && netlify deploy --prod"
   },
   "bin": {
     "kitty": "./kitty-cli.js",

@@ -5,14 +5,14 @@ async function midvoicechat(req, res) {
     let bearer = ckey || (skey ? `Bearer ${skey}` : null);
     if (!bearer) return res.status(401).json({ error: 'No API key provided' });
     let { model, voice } = req.query;
-    if (!model) return res.status(400).send(`Missing model query`);
-    let body = { model };
-    if (voice) body.voice = voice;
+    let session = { type: 'realtime' };
+    if (model) session.model = model;
+    if (voice) session.audio = { output: { voice } };
     let sr = await fetch(process.env.OPENAI_API_REALTIME_ENDPOINT, {
       method: 'POST',
       headers: { 'Authorization': bearer, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
+      body: JSON.stringify({ session })
+    });
     let json = await sr.json();
     if (!sr.ok) {
       console.error("OpenAI error:", json);
